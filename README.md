@@ -1,14 +1,24 @@
-# Welcome to your Lovable project
+# Appointment Matchmaker
+
+Crear una aplicacion de asignación de citas con especialistas
+
+
+Centralize every backend call in one services layer, and create a mock
+implementation of it so the whole app runs without a real backend.
+
+Add tests.
+
+use these theme for the front end. https://github.com/lauosgom/Telefono-Formulario
 
 This project was built with [Lovable](https://lovable.dev).
 
 ## Build with Lovable
 
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/9ec873dd-1af4-4b2a-89e9-7b7a07f60960).
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
 ## Development
 
@@ -20,10 +30,3 @@ cd <repository-name>
 npm i
 npm run dev
 ```
-
-## Built with
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
