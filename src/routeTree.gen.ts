@@ -10,33 +10,191 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as RecuperarRouteImport } from './routes/recuperar'
+import { Route as RestablecerRouteImport } from './routes/restablecer'
+import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as AppAgendaRouteImport } from './routes/_app.agenda'
+import { Route as AppAsignacionesRouteImport } from './routes/_app.asignaciones'
+import { Route as AppBuscarRouteImport } from './routes/_app.buscar'
+import { Route as AppMenuRouteImport } from './routes/_app.menu'
+import { Route as AppAdminCatalogosRouteImport } from './routes/_app.admin.catalogos'
+import { Route as AppAdminConfiguracionRouteImport } from './routes/_app.admin.configuracion'
+import { Route as AppAdminDisponibilidadRouteImport } from './routes/_app.admin.disponibilidad'
+import { Route as AppAdminEspecialistasRouteImport } from './routes/_app.admin.especialistas'
+import { Route as AppAdminUsuariosRouteImport } from './routes/_app.admin.usuarios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecuperarRoute = RecuperarRouteImport.update({
+  id: '/recuperar',
+  path: '/recuperar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RestablecerRoute = RestablecerRouteImport.update({
+  id: '/restablecer',
+  path: '/restablecer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgendaRoute = AppAgendaRouteImport.update({
+  id: '/agenda',
+  path: '/agenda',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAsignacionesRoute = AppAsignacionesRouteImport.update({
+  id: '/asignaciones',
+  path: '/asignaciones',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBuscarRoute = AppBuscarRouteImport.update({
+  id: '/buscar',
+  path: '/buscar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMenuRoute = AppMenuRouteImport.update({
+  id: '/menu',
+  path: '/menu',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminCatalogosRoute = AppAdminCatalogosRouteImport.update({
+  id: '/catalogos',
+  path: '/catalogos',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminConfiguracionRoute = AppAdminConfiguracionRouteImport.update({
+  id: '/configuracion',
+  path: '/configuracion',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminDisponibilidadRoute = AppAdminDisponibilidadRouteImport.update({
+  id: '/disponibilidad',
+  path: '/disponibilidad',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminEspecialistasRoute = AppAdminEspecialistasRouteImport.update({
+  id: '/especialistas',
+  path: '/especialistas',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminUsuariosRoute = AppAdminUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/recuperar': typeof RecuperarRoute
+  '/restablecer': typeof RestablecerRoute
+  '/admin': typeof AppAdminRouteWithChildren
+  '/agenda': typeof AppAgendaRoute
+  '/asignaciones': typeof AppAsignacionesRoute
+  '/buscar': typeof AppBuscarRoute
+  '/menu': typeof AppMenuRoute
+  '/admin/catalogos': typeof AppAdminCatalogosRoute
+  '/admin/configuracion': typeof AppAdminConfiguracionRoute
+  '/admin/disponibilidad': typeof AppAdminDisponibilidadRoute
+  '/admin/especialistas': typeof AppAdminEspecialistasRoute
+  '/admin/usuarios': typeof AppAdminUsuariosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/recuperar': typeof RecuperarRoute
+  '/restablecer': typeof RestablecerRoute
+  '/admin': typeof AppAdminRouteWithChildren
+  '/agenda': typeof AppAgendaRoute
+  '/asignaciones': typeof AppAsignacionesRoute
+  '/buscar': typeof AppBuscarRoute
+  '/menu': typeof AppMenuRoute
+  '/admin/catalogos': typeof AppAdminCatalogosRoute
+  '/admin/configuracion': typeof AppAdminConfiguracionRoute
+  '/admin/disponibilidad': typeof AppAdminDisponibilidadRoute
+  '/admin/especialistas': typeof AppAdminEspecialistasRoute
+  '/admin/usuarios': typeof AppAdminUsuariosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/recuperar': typeof RecuperarRoute
+  '/restablecer': typeof RestablecerRoute
+  '/_app/admin': typeof AppAdminRouteWithChildren
+  '/_app/agenda': typeof AppAgendaRoute
+  '/_app/asignaciones': typeof AppAsignacionesRoute
+  '/_app/buscar': typeof AppBuscarRoute
+  '/_app/menu': typeof AppMenuRoute
+  '/_app/admin/catalogos': typeof AppAdminCatalogosRoute
+  '/_app/admin/configuracion': typeof AppAdminConfiguracionRoute
+  '/_app/admin/disponibilidad': typeof AppAdminDisponibilidadRoute
+  '/_app/admin/especialistas': typeof AppAdminEspecialistasRoute
+  '/_app/admin/usuarios': typeof AppAdminUsuariosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/recuperar'
+    | '/restablecer'
+    | '/admin'
+    | '/agenda'
+    | '/asignaciones'
+    | '/buscar'
+    | '/menu'
+    | '/admin/catalogos'
+    | '/admin/configuracion'
+    | '/admin/disponibilidad'
+    | '/admin/especialistas'
+    | '/admin/usuarios'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/recuperar'
+    | '/restablecer'
+    | '/admin'
+    | '/agenda'
+    | '/asignaciones'
+    | '/buscar'
+    | '/menu'
+    | '/admin/catalogos'
+    | '/admin/configuracion'
+    | '/admin/disponibilidad'
+    | '/admin/especialistas'
+    | '/admin/usuarios'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/recuperar'
+    | '/restablecer'
+    | '/_app/admin'
+    | '/_app/agenda'
+    | '/_app/asignaciones'
+    | '/_app/buscar'
+    | '/_app/menu'
+    | '/_app/admin/catalogos'
+    | '/_app/admin/configuracion'
+    | '/_app/admin/disponibilidad'
+    | '/_app/admin/especialistas'
+    | '/_app/admin/usuarios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  RecuperarRoute: typeof RecuperarRoute
+  RestablecerRoute: typeof RestablecerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +206,143 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recuperar': {
+      id: '/recuperar'
+      path: '/recuperar'
+      fullPath: '/recuperar'
+      preLoaderRoute: typeof RecuperarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/restablecer': {
+      id: '/restablecer'
+      path: '/restablecer'
+      fullPath: '/restablecer'
+      preLoaderRoute: typeof RestablecerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/agenda': {
+      id: '/_app/agenda'
+      path: '/agenda'
+      fullPath: '/agenda'
+      preLoaderRoute: typeof AppAgendaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/asignaciones': {
+      id: '/_app/asignaciones'
+      path: '/asignaciones'
+      fullPath: '/asignaciones'
+      preLoaderRoute: typeof AppAsignacionesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/buscar': {
+      id: '/_app/buscar'
+      path: '/buscar'
+      fullPath: '/buscar'
+      preLoaderRoute: typeof AppBuscarRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/menu': {
+      id: '/_app/menu'
+      path: '/menu'
+      fullPath: '/menu'
+      preLoaderRoute: typeof AppMenuRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin/catalogos': {
+      id: '/_app/admin/catalogos'
+      path: '/catalogos'
+      fullPath: '/admin/catalogos'
+      preLoaderRoute: typeof AppAdminCatalogosRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/configuracion': {
+      id: '/_app/admin/configuracion'
+      path: '/configuracion'
+      fullPath: '/admin/configuracion'
+      preLoaderRoute: typeof AppAdminConfiguracionRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/disponibilidad': {
+      id: '/_app/admin/disponibilidad'
+      path: '/disponibilidad'
+      fullPath: '/admin/disponibilidad'
+      preLoaderRoute: typeof AppAdminDisponibilidadRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/especialistas': {
+      id: '/_app/admin/especialistas'
+      path: '/especialistas'
+      fullPath: '/admin/especialistas'
+      preLoaderRoute: typeof AppAdminEspecialistasRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/_app/admin/usuarios': {
+      id: '/_app/admin/usuarios'
+      path: '/usuarios'
+      fullPath: '/admin/usuarios'
+      preLoaderRoute: typeof AppAdminUsuariosRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
 
+interface AppAdminRouteChildren {
+  AppAdminCatalogosRoute: typeof AppAdminCatalogosRoute
+  AppAdminConfiguracionRoute: typeof AppAdminConfiguracionRoute
+  AppAdminDisponibilidadRoute: typeof AppAdminDisponibilidadRoute
+  AppAdminEspecialistasRoute: typeof AppAdminEspecialistasRoute
+  AppAdminUsuariosRoute: typeof AppAdminUsuariosRoute
+}
+
+const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminCatalogosRoute: AppAdminCatalogosRoute,
+  AppAdminConfiguracionRoute: AppAdminConfiguracionRoute,
+  AppAdminDisponibilidadRoute: AppAdminDisponibilidadRoute,
+  AppAdminEspecialistasRoute: AppAdminEspecialistasRoute,
+  AppAdminUsuariosRoute: AppAdminUsuariosRoute,
+}
+
+const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
+  AppAdminRouteChildren,
+)
+
+interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRouteWithChildren
+  AppAgendaRoute: typeof AppAgendaRoute
+  AppAsignacionesRoute: typeof AppAsignacionesRoute
+  AppBuscarRoute: typeof AppBuscarRoute
+  AppMenuRoute: typeof AppMenuRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRouteWithChildren,
+  AppAgendaRoute: AppAgendaRoute,
+  AppAsignacionesRoute: AppAsignacionesRoute,
+  AppBuscarRoute: AppBuscarRoute,
+  AppMenuRoute: AppMenuRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  RecuperarRoute: RecuperarRoute,
+  RestablecerRoute: RestablecerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
