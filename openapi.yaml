@@ -1,0 +1,1286 @@
+openapi: 3.1.0
+info:
+  title: Appointment Matchmaker API
+  description: >
+    Backend contract expected by the frontend's `AppServices` interface
+    (frontend/src/services/types.ts). The frontend is currently wired to an
+    in-memory mock (frontend/src/services/mock.ts); this document specifies
+    the real HTTP API that would replace it.
+
+    Every `AppServices` method took an explicit `actorId` as its first
+    argument because the mock has no real session. A real backend instead
+    identifies the actor from the `Authorization` bearer token issued by
+    `POST /auth/login`, so `actorId` does not appear as a request parameter
+    anywhere below.
+  version: "1.0.0"
+
+servers:
+  - url: /api
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+  - name: users
+  - name: categories
+  - name: specialists
+  - name: slots
+  - name: settings
+  - name: availability
+  - name: assignments
+  - name: corrections
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in with username and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Authenticated. Use the returned token as the bearer token for all subsequent requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, token]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                  token:
+                    type: string
+        "401":
+          description: Usuario o contraseña incorrectos, or the account is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many failed attempts; account temporarily locked (5 minutes).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/password-reset/request:
+    post:
+      tags: [auth]
+      summary: Request a password reset token for an email address
+      description: >
+        Always responds 200 regardless of whether the email matches an active
+        user, to avoid leaking which emails are registered. `demoToken` is
+        only populated in non-production/demo environments; in production
+        the token is delivered out-of-band (e.g. email) and omitted here.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Request accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  demoToken:
+                    type: string
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      summary: Complete a password reset using a token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 6
+      responses:
+        "204":
+          description: Password updated.
+        "400":
+          description: Invalid/expired token, or password shorter than 6 characters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users:
+    get:
+      tags: [users]
+      summary: List all users
+      description: "Requires role: admin."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [users]
+      summary: Create a user
+      description: "Requires role: admin."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error (missing username, duplicate username, password too short, missing specialistId for role especialista).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /users/names:
+    get:
+      tags: [users]
+      summary: Map of user id to full name
+      description: >
+        Used throughout the app to display who performed an action
+        (createdBy/confirmedBy/closedBy). Requires any authenticated user.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/{id}:
+    get:
+      tags: [users]
+      summary: Get a user by id
+      description: Requires any authenticated user.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: User not found.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [users]
+      summary: Update a user
+      description: >
+        Requires role: admin. A user may not deactivate their own account
+        (active: false on self is rejected).
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error (duplicate username, self-deactivation, password too short).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /categories/{kind}:
+    get:
+      tags: [categories]
+      summary: List categories of a kind (departments or intervention areas)
+      description: Requires any authenticated user.
+      parameters:
+        - $ref: "#/components/parameters/CategoryKind"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [categories]
+      summary: Create a category
+      description: "Requires role: admin."
+      parameters:
+        - $ref: "#/components/parameters/CategoryKind"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          description: Validation error (missing code/name, duplicate code).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /categories/{kind}/{id}:
+    put:
+      tags: [categories]
+      summary: Update a category
+      description: "Requires role: admin."
+      parameters:
+        - $ref: "#/components/parameters/CategoryKind"
+        - $ref: "#/components/parameters/CategoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          description: Validation error (duplicate code).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Category not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /categories/{kind}/{id}/usage:
+    get:
+      tags: [categories]
+      summary: Usage warning before deactivating/deleting a category
+      description: >
+        Returns how many specialists reference this category and how many
+        pending/upcoming-confirmed appointments would be affected. Requires
+        any authenticated user.
+      parameters:
+        - $ref: "#/components/parameters/CategoryKind"
+        - $ref: "#/components/parameters/CategoryId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageWarning"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /specialists:
+    get:
+      tags: [specialists]
+      summary: List all specialists
+      description: Requires any authenticated user.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Specialist"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [specialists]
+      summary: Create a specialist
+      description: "Requires role: admin."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecialistInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Specialist"
+        "400":
+          description: Validation error (missing code/fullName, duplicate code).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /specialists/{id}:
+    put:
+      tags: [specialists]
+      summary: Update a specialist
+      description: "Requires role: admin."
+      parameters:
+        - $ref: "#/components/parameters/SpecialistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecialistInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Specialist"
+        "400":
+          description: Validation error (duplicate code).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Specialist not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /specialists/{id}/pending-appointments:
+    get:
+      tags: [specialists]
+      summary: Count of pending/upcoming-confirmed appointments for a specialist
+      description: Requires any authenticated user.
+      parameters:
+        - $ref: "#/components/parameters/SpecialistId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /specialists/{id}/slots:
+    get:
+      tags: [slots]
+      summary: List a specialist's slots
+      description: Requires any authenticated user.
+      parameters:
+        - $ref: "#/components/parameters/SpecialistId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SlotWithBooked"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [slots]
+      summary: Add one or more slots for a specialist
+      description: >
+        Requires role: admin. Each start must be in the future and must not
+        overlap an existing active or booked slot for the same specialist;
+        duration is taken from the current global settings.
+      parameters:
+        - $ref: "#/components/parameters/SpecialistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [starts]
+              properties:
+                starts:
+                  type: array
+                  description: ISO 8601 UTC datetimes.
+                  items:
+                    type: string
+                    format: date-time
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Slot"
+        "400":
+          description: Validation error (no starts, past datetime, overlapping slot, invalid specialist).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /slots/{id}:
+    patch:
+      tags: [slots]
+      summary: Activate or deactivate a slot
+      description: >
+        Requires role: admin. A slot that is currently booked (has a pending
+        or confirmed assignment) cannot be modified. Reactivating a slot is
+        rejected if it would now overlap another active/booked slot.
+      parameters:
+        - $ref: "#/components/parameters/SlotId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active:
+                  type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Slot"
+        "400":
+          description: Validation error (booked slot, overlap on reactivation).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Slot not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: Get global settings
+      description: Requires any authenticated user.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /settings/duration:
+    put:
+      tags: [settings]
+      summary: Change the default appointment duration
+      description: >
+        Requires role: admin. Minutes must be an integer between 5 and 480.
+        Existing active, unbooked, future slots are updated to the new
+        duration unless doing so would create an overlap, in which case they
+        are returned in `needsReview` and left unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minutes]
+              properties:
+                minutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 480
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [needsReview]
+                properties:
+                  needsReview:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Slot"
+        "400":
+          description: Validation error (minutes out of range).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /settings/year-letters/{year}:
+    put:
+      tags: [settings]
+      summary: Set the two-letter prefix used in confirmation codes for a year
+      description: "Requires role: admin."
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [letters]
+              properties:
+                letters:
+                  type: string
+                  pattern: "^[A-Za-z]{2}$"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          description: Validation error (year not 4 digits, letters not exactly 2 letters).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /availability/search:
+    get:
+      tags: [availability]
+      summary: Search open, bookable slots
+      description: Requires any authenticated user.
+      parameters:
+        - name: by
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [specialist, department, area]
+        - name: id
+          in: query
+          required: true
+          description: Id of the specialist/department/area named by `by`.
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: false
+          description: YYYY-MM-DD in Colombia time. When omitted, returns all upcoming slots.
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AvailabilityResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /assignments:
+    get:
+      tags: [assignments]
+      summary: List assignments
+      description: >
+        Requires any authenticated user. Results are scoped server-side by
+        role: an `especialista` only sees their own confirmed appointments;
+        an `orientador` only sees confirmed appointments unless filtering by
+        their own `createdBy`; an `admin` sees everything.
+      parameters:
+        - name: specialistId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/DisplayStatus"
+        - name: createdBy
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Assignment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [assignments]
+      summary: Create a pending assignment on a slot
+      description: >
+        Requires role: admin or orientador. At least one of personName or
+        personPhone is required; phone must match
+        `^[0-9+\s-]{7,15}$`. The slot must be active, unbooked, belong to an
+        active specialist, and be in the future.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slotId]
+              properties:
+                slotId:
+                  type: string
+                personName:
+                  type: string
+                personPhone:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assignment"
+        "400":
+          description: Validation error (missing name/phone, invalid phone, slot unavailable).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /assignments/{id}/confirm:
+    post:
+      tags: [assignments]
+      summary: Confirm a pending assignment
+      description: >
+        Requires role: admin or orientador, and only the orientador who
+        created the assignment or an admin may confirm it. Assignment must
+        currently be `pending`. Requires year letters to be configured for
+        the current year in order to generate a confirmation code.
+      parameters:
+        - $ref: "#/components/parameters/AssignmentId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assignment"
+        "400":
+          description: Validation error (not pending, no year letters configured).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Assignment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /assignments/{id}/discard:
+    post:
+      tags: [assignments]
+      summary: Discard a pending assignment
+      description: >
+        Requires role: admin or orientador, and only the orientador who
+        created the assignment or an admin may discard it. Assignment must
+        currently be `pending`.
+      parameters:
+        - $ref: "#/components/parameters/AssignmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReasonBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assignment"
+        "400":
+          description: Validation error (not pending, missing reason).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Assignment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /assignments/{id}/cancel:
+    post:
+      tags: [assignments]
+      summary: Cancel a confirmed appointment
+      description: >
+        Requires role: admin. Assignment must currently be `confirmed` and
+        its start time must not already be in the past.
+      parameters:
+        - $ref: "#/components/parameters/AssignmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReasonBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Assignment"
+        "400":
+          description: Validation error (not confirmed, start already past, missing reason).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Assignment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /assignments/{id}/correction-requests:
+    post:
+      tags: [corrections]
+      summary: Request a correction on a confirmed appointment
+      description: "Requires role: orientador. Assignment must currently be `confirmed`."
+      parameters:
+        - $ref: "#/components/parameters/AssignmentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorrectionRequest"
+        "400":
+          description: Validation error (not confirmed, missing message).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Assignment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /correction-requests:
+    get:
+      tags: [corrections]
+      summary: List all correction requests, newest first
+      description: "Requires role: admin."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CorrectionRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token returned by POST /auth/login. The backend derives the acting
+        user (role, id) from this token; it is never passed as a request
+        parameter.
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    CategoryKind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/CategoryKind"
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    SpecialistId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    SlotId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    AssignmentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Authenticated, but the user's role does not permit this action.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: User-facing error message (Spanish), safe to display as-is.
+
+    Role:
+      type: string
+      enum: [admin, orientador, especialista]
+
+    User:
+      type: object
+      required: [id, username, fullName, email, role, active]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/Role"
+        active:
+          type: boolean
+        specialistId:
+          type: string
+          description: Set when role is especialista; links the account to a Specialist.
+
+    UserInput:
+      type: object
+      required: [username, fullName, email, role, active]
+      properties:
+        username:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/Role"
+        active:
+          type: boolean
+        specialistId:
+          type: string
+          description: Required when role is especialista.
+        password:
+          type: string
+          minLength: 6
+          description: Required on create. Optional on update (omit to keep the current password).
+
+    CategoryKind:
+      type: string
+      enum: [department, area]
+
+    Category:
+      type: object
+      required: [id, code, name, active]
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+
+    CategoryInput:
+      type: object
+      required: [code, name, active]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+
+    Specialist:
+      type: object
+      required: [id, code, fullName, departmentIds, areaIds, active]
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        fullName:
+          type: string
+        departmentIds:
+          type: array
+          items:
+            type: string
+        areaIds:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+
+    SpecialistInput:
+      type: object
+      required: [code, fullName, departmentIds, areaIds, active]
+      properties:
+        code:
+          type: string
+        fullName:
+          type: string
+        departmentIds:
+          type: array
+          items:
+            type: string
+        areaIds:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+
+    Slot:
+      type: object
+      required: [id, specialistId, start, durationMin, active]
+      properties:
+        id:
+          type: string
+        specialistId:
+          type: string
+        start:
+          type: string
+          format: date-time
+          description: ISO 8601 UTC.
+        durationMin:
+          type: integer
+        active:
+          type: boolean
+
+    SlotWithBooked:
+      allOf:
+        - $ref: "#/components/schemas/Slot"
+        - type: object
+          required: [booked]
+          properties:
+            booked:
+              type: boolean
+              description: True if a pending or confirmed assignment exists for this slot.
+
+    AssignmentStatus:
+      type: string
+      enum: [pending, confirmed, cancelled, discarded]
+
+    DisplayStatus:
+      type: string
+      description: >
+        AssignmentStatus plus "past": a confirmed assignment whose start time
+        has already elapsed is displayed (and filterable) as "past" instead
+        of "confirmed".
+      enum: [pending, confirmed, cancelled, discarded, past]
+
+    Assignment:
+      type: object
+      required: [id, slotId, specialistId, start, durationMin, status, createdAt, createdBy]
+      properties:
+        id:
+          type: string
+        slotId:
+          type: string
+        specialistId:
+          type: string
+        start:
+          type: string
+          format: date-time
+        durationMin:
+          type: integer
+        personName:
+          type: string
+        personPhone:
+          type: string
+        status:
+          $ref: "#/components/schemas/AssignmentStatus"
+        code:
+          type: string
+          description: Confirmation code, assigned when status becomes confirmed (yearLetters + zero-padded sequence).
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          description: User id of the creator.
+        confirmedAt:
+          type: string
+          format: date-time
+        confirmedBy:
+          type: string
+          description: User id of who confirmed it.
+        closedAt:
+          type: string
+          format: date-time
+        closedBy:
+          type: string
+          description: User id of who cancelled/discarded it.
+        closeReason:
+          type: string
+
+    CorrectionRequest:
+      type: object
+      required: [id, assignmentId, message, createdBy, createdAt]
+      properties:
+        id:
+          type: string
+        assignmentId:
+          type: string
+        message:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Settings:
+      type: object
+      required: [durationMin, yearLetters]
+      properties:
+        durationMin:
+          type: integer
+        yearLetters:
+          type: object
+          description: Map of 4-digit year to its 2-letter confirmation-code prefix.
+          additionalProperties:
+            type: string
+
+    AvailabilityResult:
+      type: object
+      required: [specialist, slot]
+      properties:
+        specialist:
+          $ref: "#/components/schemas/Specialist"
+        slot:
+          $ref: "#/components/schemas/Slot"
+
+    UsageWarning:
+      type: object
+      required: [specialists, pendingAppointments]
+      properties:
+        specialists:
+          type: integer
+          description: Number of specialists referencing this category.
+        pendingAppointments:
+          type: integer
+          description: Number of pending/upcoming-confirmed appointments affected.
+
+    ReasonBody:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
