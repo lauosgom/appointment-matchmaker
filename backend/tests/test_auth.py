@@ -41,7 +41,7 @@ def test_login_locks_after_max_failed_attempts(client):
     assert r.status_code == 429
 
 
-def test_login_disabled_account(client, store, admin_headers):
+def test_login_disabled_account(client, admin_headers):
     client.put(
         "/api/users/u2",
         json={
@@ -57,7 +57,7 @@ def test_login_disabled_account(client, store, admin_headers):
     assert r.status_code == 401
 
 
-def test_password_reset_flow(client, store):
+def test_password_reset_flow(client):
     r = client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
     assert r.status_code == 200
     token = r.json()["demoToken"]

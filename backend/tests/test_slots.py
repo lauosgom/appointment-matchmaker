@@ -1,5 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import select
+
+from app.tables import SlotRow
+
 
 def iso(dt: datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")
@@ -55,14 +59,14 @@ def test_add_slots_rejects_empty_list(client, admin_headers):
     assert r.status_code == 400
 
 
-def test_set_slot_active_requires_admin(client, store, orientador_headers):
-    slot_id = next(s.id for s in store.slots.values() if s.specialistId == "s1")
+def test_set_slot_active_requires_admin(client, db, orientador_headers):
+    slot_id = db.scalars(select(SlotRow.id).where(SlotRow.specialist_id == "s1")).first()
     r = client.patch(f"/api/slots/{slot_id}", json={"active": False}, headers=orientador_headers)
     assert r.status_code == 403
 
 
-def test_set_slot_active_toggle(client, store, admin_headers):
-    slot_id = next(s.id for s in store.slots.values() if s.specialistId == "s1")
+def test_set_slot_active_toggle(client, db, admin_headers):
+    slot_id = db.scalars(select(SlotRow.id).where(SlotRow.specialist_id == "s1")).first()
     r = client.patch(f"/api/slots/{slot_id}", json={"active": False}, headers=admin_headers)
     assert r.status_code == 200
     assert r.json()["active"] is False

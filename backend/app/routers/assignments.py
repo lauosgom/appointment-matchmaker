@@ -21,7 +21,7 @@ def list_assignments(
     specialistId: str | None = None,
     status: DisplayStatus | None = None,
     createdBy: str | None = None,
-    store: Store = Depends(get_store),
+    store: Store = Depends(get_store, scope="function"),
     actor: User = Depends(get_current_user),
 ) -> list[Assignment]:
     return store.list_assignments(actor, specialist_id=specialistId, status_filter=status, created_by=createdBy)
@@ -34,7 +34,7 @@ def list_assignments(
     dependencies=[Depends(require_roles(Role.admin, Role.orientador))],
 )
 def create_assignment(
-    body: CreateAssignmentBody, store: Store = Depends(get_store), actor: User = Depends(get_current_user)
+    body: CreateAssignmentBody, store: Store = Depends(get_store, scope="function"), actor: User = Depends(get_current_user)
 ) -> Assignment:
     return store.create_assignment(actor, body.slotId, body.personName, body.personPhone)
 
@@ -45,7 +45,7 @@ def create_assignment(
     dependencies=[Depends(require_roles(Role.admin, Role.orientador))],
 )
 def confirm_assignment(
-    id: str, store: Store = Depends(get_store), actor: User = Depends(get_current_user)
+    id: str, store: Store = Depends(get_store, scope="function"), actor: User = Depends(get_current_user)
 ) -> Assignment:
     return store.confirm_assignment(actor, id)
 
@@ -56,7 +56,7 @@ def confirm_assignment(
     dependencies=[Depends(require_roles(Role.admin, Role.orientador))],
 )
 def discard_assignment(
-    id: str, body: ReasonBody, store: Store = Depends(get_store), actor: User = Depends(get_current_user)
+    id: str, body: ReasonBody, store: Store = Depends(get_store, scope="function"), actor: User = Depends(get_current_user)
 ) -> Assignment:
     return store.discard_assignment(actor, id, body.reason)
 
@@ -65,7 +65,7 @@ def discard_assignment(
     "/{id}/cancel", response_model=Assignment, dependencies=[Depends(require_roles(Role.admin))]
 )
 def cancel_assignment(
-    id: str, body: ReasonBody, store: Store = Depends(get_store), actor: User = Depends(get_current_user)
+    id: str, body: ReasonBody, store: Store = Depends(get_store, scope="function"), actor: User = Depends(get_current_user)
 ) -> Assignment:
     return store.cancel_assignment(actor, id, body.reason)
 
@@ -78,6 +78,6 @@ def cancel_assignment(
     dependencies=[Depends(require_roles(Role.orientador))],
 )
 def request_correction(
-    id: str, body: CorrectionMessageBody, store: Store = Depends(get_store), actor: User = Depends(get_current_user)
+    id: str, body: CorrectionMessageBody, store: Store = Depends(get_store, scope="function"), actor: User = Depends(get_current_user)
 ) -> CorrectionRequest:
     return store.request_correction(actor, id, body.message)

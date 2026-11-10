@@ -13,7 +13,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    store: Store = Depends(get_store),
+    store: Store = Depends(get_store, scope="function"),
 ) -> User:
     if credentials is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Falta el token de autenticación.")

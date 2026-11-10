@@ -1,7 +1,10 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from . import config, db, seed
 from .routers import (
     assignments,
     auth,
@@ -14,7 +17,24 @@ from .routers import (
     users,
 )
 
-app = FastAPI(title="Appointment Matchmaker API", version="1.0.0")
+
+
+def init_database() -> None:
+    """Create missing tables and, if enabled, load demo data into an empty database."""
+    db.create_schema(db.get_engine())
+    if config.seed_demo_data():
+        with db.get_session_factory()() as session, session.begin():
+            if seed.is_empty(session):
+                seed.seed_database(session)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_database()
+    yield
+
+
+app = FastAPI(title="Appointment Matchmaker API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

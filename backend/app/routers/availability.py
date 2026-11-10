@@ -12,7 +12,7 @@ def search_availability(
     by: AvailabilityBy,
     id: str,
     date: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
-    store: Store = Depends(get_store),
+    store: Store = Depends(get_store, scope="function"),
     _: User = Depends(get_current_user),
 ) -> list[AvailabilityResult]:
     return [

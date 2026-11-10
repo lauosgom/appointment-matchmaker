@@ -1,12 +1,13 @@
 [project]
 name = "appointment-matchmaker-backend"
 version = "0.1.0"
-description = "FastAPI backend implementing the Appointment Matchmaker openapi.yaml contract, in-memory store, bearer-token auth."
+description = "FastAPI backend implementing the Appointment Matchmaker openapi.yaml contract, SQLAlchemy persistence (SQLite by default), bearer-token auth."
 requires-python = ">=3.13"
 dependencies = [
     "bcrypt>=5.0.0",
     "email-validator>=2.3.0",
     "fastapi>=0.162.2",
+    "sqlalchemy>=2.1.8",
     "uvicorn[standard]>=0.54.0",
 ]
 

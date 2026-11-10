@@ -1,3 +1,6 @@
+from sqlalchemy import delete
+
+from app.tables import YearLettersRow
 def free_slot(client, headers, specialist_id="s1"):
     slots = client.get(f"/api/specialists/{specialist_id}/slots", headers=headers).json()
     return next(s for s in slots if not s["booked"])
@@ -71,7 +74,7 @@ def test_confirm_assignment_generates_code(client, orientador_headers):
     assert body["confirmedBy"]
 
 
-def test_confirm_assignment_only_creator_or_admin(client, orientador_headers, admin_headers, store):
+def test_confirm_assignment_only_creator_or_admin(client, orientador_headers, admin_headers):
     # give admin's own user a second orientador to prove ownership is actually checked,
     # not just role
     client.post(
@@ -112,8 +115,9 @@ def test_confirm_assignment_requires_pending_status(client, orientador_headers):
     assert r.status_code == 400
 
 
-def test_confirm_assignment_without_year_letters_configured(client, orientador_headers, store):
-    store.settings.yearLetters.clear()
+def test_confirm_assignment_without_year_letters_configured(client, orientador_headers, db):
+    db.execute(delete(YearLettersRow))
+    db.commit()
     slot = free_slot(client, orientador_headers)
     created = client.post(
         "/api/assignments", json={"slotId": slot["id"], "personName": "Juan"}, headers=orientador_headers
