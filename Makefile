@@ -1,4 +1,7 @@
-.PHONY: help install install-backend install-frontend backend frontend dev test test-backend test-frontend
+HOST ?= 127.0.0.1
+PORT ?= 8000
+
+.PHONY: help run install install-backend install-frontend backend frontend dev test test-backend test-frontend
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -11,15 +14,17 @@ install-backend:  ## Install backend dependencies (uv)
 install-frontend:  ## Install frontend dependencies (npm)
 	cd frontend && npm install
 
-backend:  ## Run the API with auto-reload on http://127.0.0.1:8000 (docs at /docs)
-	cd backend && uv run uvicorn app.main:app --reload
+run:  ## Run the API with auto-reload (override with HOST=0.0.0.0 PORT=8080; docs at /docs)
+	cd backend && uv run uvicorn app.main:app --reload --host $(HOST) --port $(PORT)
+
+backend: run  ## Alias for run
 
 frontend:  ## Run the frontend dev server
 	cd frontend && npm run dev
 
 dev:  ## Run backend and frontend together (Ctrl+C stops both)
 	@trap 'kill 0' INT TERM EXIT; \
-	$(MAKE) --no-print-directory backend & \
+	$(MAKE) --no-print-directory run HOST=$(HOST) PORT=$(PORT) & \
 	$(MAKE) --no-print-directory frontend & \
 	wait
 
