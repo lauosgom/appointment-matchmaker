@@ -1,0 +1,32 @@
+.PHONY: help install install-backend install-frontend backend frontend dev test test-backend test-frontend
+
+help:  ## Show available targets
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+
+install: install-backend install-frontend  ## Install all dependencies
+
+install-backend:  ## Install backend dependencies (uv)
+	cd backend && uv sync
+
+install-frontend:  ## Install frontend dependencies (npm)
+	cd frontend && npm install
+
+backend:  ## Run the API with auto-reload on http://127.0.0.1:8000 (docs at /docs)
+	cd backend && uv run uvicorn app.main:app --reload
+
+frontend:  ## Run the frontend dev server
+	cd frontend && npm run dev
+
+dev:  ## Run backend and frontend together (Ctrl+C stops both)
+	@trap 'kill 0' INT TERM EXIT; \
+	$(MAKE) --no-print-directory backend & \
+	$(MAKE) --no-print-directory frontend & \
+	wait
+
+test: test-backend test-frontend  ## Run all tests
+
+test-backend:  ## Run backend tests
+	cd backend && uv run pytest
+
+test-frontend:  ## Run frontend tests
+	cd frontend && npm test
