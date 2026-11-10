@@ -23,6 +23,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     services.users
       .get(id)
       .then((u) => setUser(u && u.active ? u : null))
+      .catch(() => {
+        window.sessionStorage.removeItem(KEY);
+        setUser(null);
+      })
       .finally(() => setReady(true));
   }, []);
 
@@ -34,11 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    services.auth.logout();
     window.sessionStorage.removeItem(KEY);
     setUser(null);
   }, []);
 
-  return <AuthContext.Provider value={{ user, ready, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, ready, login, logout }}>{children}</AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

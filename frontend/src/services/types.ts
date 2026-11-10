@@ -126,6 +126,8 @@ export class ServiceError extends Error {
 export interface AppServices {
   auth: {
     login(username: string, password: string): Promise<User>;
+    /** Drop any credentials held by the client. */
+    logout(): void;
     requestPasswordReset(email: string): Promise<{ demoToken?: string }>;
     resetPassword(token: string, newPassword: string): Promise<void>;
   };

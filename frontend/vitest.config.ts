@@ -9,6 +9,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // UI tests run against the in-memory mock, not a live backend.
+    env: { VITE_USE_MOCK: "true" },
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },

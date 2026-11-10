@@ -213,6 +213,7 @@ export function createMockServices(options: MockOptions = {}): AppServices {
           delete state.failed[key];
           return publicUser(u!);
         }),
+      logout: () => {},
       requestPasswordReset: (email) =>
         run(() => {
           const u = state.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase() && x.active);

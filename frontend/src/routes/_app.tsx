@@ -6,7 +6,7 @@ import logo from "@/assets/logo.png.asset.json";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { MENU, ROLE_LABEL } from "@/lib/menu";
-import { resetDemoData } from "@/services";
+import { resetDemoData, usingMock } from "@/services";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -21,7 +21,11 @@ function AppLayout() {
   }, [ready, user, navigate]);
 
   if (!ready || !user) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Cargando…</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Cargando…
+      </div>
+    );
   }
 
   const items = MENU.filter((m) => (m.roles as readonly string[]).includes(user.role));
@@ -31,7 +35,11 @@ function AppLayout() {
       <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2">
           <Link to="/menu" className="flex items-center gap-2">
-            <img src={logo.url} alt="Teléfono de la Esperanza" className="h-10 w-auto mix-blend-multiply" />
+            <img
+              src={logo.url}
+              alt="Teléfono de la Esperanza"
+              className="h-10 w-auto mix-blend-multiply"
+            />
           </Link>
           <nav className="hidden flex-1 flex-wrap gap-1 lg:flex">
             {items.map((m) => (
@@ -67,10 +75,14 @@ function AppLayout() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <Outlet />
       </main>
-      <footer className="pb-6 text-center text-xs text-muted-foreground">
-        Datos de demostración ·{" "}
-        <button className="underline" onClick={resetDemoData}>Restablecer datos</button>
-      </footer>
+      {usingMock && (
+        <footer className="pb-6 text-center text-xs text-muted-foreground">
+          Datos de demostración ·{" "}
+          <button className="underline" onClick={resetDemoData}>
+            Restablecer datos
+          </button>
+        </footer>
+      )}
     </div>
   );
 }
