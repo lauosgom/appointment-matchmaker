@@ -1,7 +1,7 @@
 HOST ?= 127.0.0.1
 PORT ?= 8000
 
-.PHONY: help run install install-backend install-frontend backend frontend dev test test-backend test-frontend
+.PHONY: help run install install-backend install-frontend backend frontend dev test test-backend test-frontend docker-build docker-run
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -35,3 +35,11 @@ test-backend:  ## Run backend tests
 
 test-frontend:  ## Run frontend tests
 	cd frontend && npm test
+
+IMAGE ?= appointment-matchmaker
+
+docker-build:  ## Build the Docker image (frontend served by the backend)
+	docker build -t $(IMAGE) .
+
+docker-run:  ## Run the Docker image on PORT (SQLite data kept in the appointments-data volume)
+	docker run --rm -p $(PORT):8000 -v appointments-data:/data $(IMAGE)

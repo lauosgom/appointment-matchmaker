@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from . import config, db, seed
 from .routers import (
@@ -16,8 +17,6 @@ from .routers import (
     specialists,
     users,
 )
-
-
 
 def init_database() -> None:
     """Create missing tables and, if enabled, load demo data into an empty database."""
@@ -63,3 +62,22 @@ for router in (
     corrections.router,
 ):
     app.include_router(router, prefix="/api")
+
+
+def mount_frontend(app: FastAPI, root: Path) -> None:
+    """Serve the built SPA: real files as-is, any other non-API path gets index.html
+    so client-side routes (e.g. /agenda) survive a page reload."""
+    index = root / "index.html"
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def frontend(path: str):
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = (root / path).resolve()
+        if path and candidate.is_relative_to(root) and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+
+if (frontend_root := config.frontend_dir()) is not None:
+    mount_frontend(app, frontend_root)

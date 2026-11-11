@@ -6,10 +6,16 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// STATIC_BUILD=true builds a client-only SPA (static files in dist/client, with an
+// index.html shell) so the FastAPI backend can serve the frontend. See ../Dockerfile.
+const staticBuild = process.env.STATIC_BUILD === "true";
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    ...(staticBuild ? { spa: { enabled: true, prerender: { outputPath: "/index.html" } } } : {}),
   },
+  ...(staticBuild ? { nitro: false as const } : {}),
 });
