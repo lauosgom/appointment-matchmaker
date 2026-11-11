@@ -187,7 +187,7 @@ Pass environment variables with `-e`:
 
 | Variable | Default in the image | Meaning |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:////data/appointments.db` | SQLAlchemy database URL (SQLite works as is; other databases need their driver added to the backend) |
+| `DATABASE_URL` | `sqlite:////data/appointments.db` | SQLAlchemy database URL: SQLite or PostgreSQL (`postgresql://user:pass@host:5432/db`) |
 | `SEED_DEMO_DATA` | `true` | Load the demo data into an empty database on startup |
 
 Example:
@@ -198,6 +198,37 @@ docker run -d --name appointment-matchmaker -p 8000:8000 -v appointments-data:/d
   appointment-matchmaker
 ```
 
+### Using PostgreSQL
+
+SQLite is the default. To use PostgreSQL instead, start a Postgres container:
+
+```sh
+make db-up   # or run it directly:
+docker run -d \
+  --name appointment-matchmaker-db \
+  -e POSTGRES_USER=appointment \
+  -e POSTGRES_PASSWORD=appointment \
+  -e POSTGRES_DB=appointment \
+  -p 5432:5432 \
+  -v appointment-matchmaker:/var/lib/postgresql/data \
+  postgres:16-alpine
+```
+
+Then point the app at it with `DATABASE_URL`. Inside a container, `localhost` is the
+container itself, so put both containers on one Docker network and use the database
+container's name as the host:
+
+```sh
+docker network create appointment-matchmaker
+docker network connect appointment-matchmaker appointment-matchmaker-db
+docker run -d --name appointment-matchmaker -p 8000:8000 --network appointment-matchmaker \
+  -e DATABASE_URL=postgresql://appointment:appointment@appointment-matchmaker-db:5432/appointment \
+  appointment-matchmaker
+```
+
+Tables are created on first start. With Postgres, the data lives in the
+`appointment-matchmaker` volume, so the `/data` volume isn't needed.
+
 ## Local development (without Docker)
 
 ```sh
@@ -205,5 +236,7 @@ make install   # install backend (uv) and frontend (npm) dependencies
 make dev       # backend on :8000 and frontend dev server together
 make test      # run all tests
 ```
+
+To develop against Postgres, run `make db-up`, then `make run-pg`.
 
 Run `make help` to list every target.

@@ -9,6 +9,7 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
+from app.config import normalize_database_url  # noqa: E402
 from app.db import create_schema, make_engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.seed import seed_database  # noqa: E402
@@ -19,7 +20,8 @@ from app.store import get_store, store_session  # noqa: E402
 @pytest.fixture
 def session_factory() -> sessionmaker[Session]:
     """A fresh, seeded in-memory database per test."""
-    engine = make_engine(os.environ.get("TEST_DATABASE_URL", "sqlite://"))
+    engine = make_engine(normalize_database_url(os.environ.get("TEST_DATABASE_URL", "sqlite://")))
+    Base.metadata.drop_all(engine)  # a shared TEST_DATABASE_URL may hold leftovers
     create_schema(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     with factory() as session, session.begin():
