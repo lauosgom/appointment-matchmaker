@@ -1,0 +1,37 @@
+# The app and its PostgreSQL database.
+#   docker compose up -d --build   # http://localhost:8000
+#   docker compose down            # stop (data is kept in the pgdata volume)
+#   docker compose down -v         # stop and delete the data
+# Override the defaults below with environment variables or a .env file.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-appointment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appointment}
+      POSTGRES_DB: ${POSTGRES_DB:-appointment}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    image: appointment-matchmaker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-appointment}:${POSTGRES_PASSWORD:-appointment}@db:5432/${POSTGRES_DB:-appointment}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+
+volumes:
+  pgdata:

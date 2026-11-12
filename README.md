@@ -103,6 +103,31 @@ Browser ──► FastAPI (one container, port 8000)
   them along with the API. Any page URL (for example `/agenda`) returns the app,
   which then shows the right screen.
 
+## Running with Docker Compose
+
+The quickest way to run the whole stack is `docker-compose.yaml`. It starts two
+services: `db` (PostgreSQL 16) and `app` (built from the `Dockerfile`). The app
+waits until the database is healthy before it starts.
+
+```sh
+docker compose up -d --build   # build and start: http://localhost:8000
+docker compose logs -f app     # follow the app logs
+docker compose down            # stop (data is kept in the pgdata volume)
+docker compose down -v         # stop and delete the database
+```
+
+You can override these settings with environment variables or a `.env` file next
+to `docker-compose.yaml`:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `APP_PORT` | `8000` | Port on your machine for the app |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `appointment` | Database credentials and name |
+| `SEED_DEMO_DATA` | `true` | Load the demo data into an empty database |
+
+The database port isn't published to your machine. To open `psql`, run
+`docker compose exec db psql -U appointment -d appointment`.
+
 ## Running with Docker
 
 The `Dockerfile` builds the frontend with Node, then builds a Python image that runs

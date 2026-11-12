@@ -8,7 +8,7 @@ PG_DB ?= appointment
 PG_PORT ?= 5432
 PG_URL ?= postgresql://$(PG_USER):$(PG_PASSWORD)@localhost:$(PG_PORT)/$(PG_DB)
 
-.PHONY: help run run-pg install install-backend install-frontend backend frontend dev test test-backend test-backend-pg test-frontend docker-build docker-run db-up db-down db-shell
+.PHONY: help run run-pg install install-backend install-frontend backend frontend dev test test-backend test-backend-pg test-frontend docker-build docker-run compose-up compose-down db-up db-down db-shell
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -57,6 +57,12 @@ docker-build:  ## Build the Docker image (frontend served by the backend)
 
 docker-run:  ## Run the Docker image on PORT (SQLite data kept in the appointments-data volume)
 	docker run --rm -p $(PORT):8000 -v appointments-data:/data $(IMAGE)
+
+compose-up:  ## Start the app and Postgres with Docker Compose (http://localhost:8000)
+	docker compose up -d --build
+
+compose-down:  ## Stop the Docker Compose stack (data is kept)
+	docker compose down
 
 db-up:  ## Start Postgres 16 in Docker (data kept in the appointment-matchmaker volume)
 	@docker start $(PG_CONTAINER) 2>/dev/null || docker run -d \
