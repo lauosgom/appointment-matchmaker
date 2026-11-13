@@ -79,3 +79,12 @@ class SmtpSettings:
 
 def smtp_settings() -> SmtpSettings:
     return SmtpSettings()
+
+
+def mail_send_inline() -> bool:
+    """Send emails before answering the request instead of in the background.
+
+    Needed on hosts that throttle CPU once a response is sent (Cloud Run with
+    request-based billing), where a background send may never finish.
+    """
+    return _flag("MAIL_SEND_INLINE")

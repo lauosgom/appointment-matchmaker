@@ -25,6 +25,7 @@ Configured with environment variables:
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | SMTP login, if needed |
 | `MAIL_FROM` | `Citas con especialistas <no-reply@localhost>` | sender address |
+| `MAIL_SEND_INLINE` | `false` | send emails before answering instead of in the background (needed on Cloud Run); reset requests then take at least 2 s, whether or not the email exists |
 
 To read emails locally, run a mail catcher such as Mailpit
 (`docker run -p 8025:8025 -p 1025:1025 axllent/mailpit:v1.27`) and start the API
@@ -83,6 +84,7 @@ TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/test uv run pytest
 - `app/store.py` — all business rules (conflict checks, role/ownership checks, confirmation codes, etc.) over a SQLAlchemy session, raising `HTTPException` with the Spanish messages the frontend displays as-is. One transaction per request via `get_store`.
 - `app/seed.py` — demo data loaded into an empty database.
 - `app/security.py` — password hashing and bearer-token generation (pure functions, no FastAPI/store dependency).
+- `app/manage.py` — admin commands, e.g. `uv run python -m app.manage create-admin …` to create the first administrator in a database without demo data.
 - `app/mailer.py` — outgoing email over SMTP (password-recovery links), sent in the background after the response.
 - `app/auth.py` — `get_current_user` / `require_roles` FastAPI dependencies built on top of the `sessions` table.
 - `app/routers/` — one module per resource group; thin HTTP layer over `Store` methods.

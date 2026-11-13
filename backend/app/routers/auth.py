@@ -1,3 +1,4 @@
+import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
@@ -9,6 +10,10 @@ from ..models import LoginRequest, LoginResponse, PasswordResetConfirmBody, Pass
 from ..store import PASSWORD_RESET_TTL, Store, get_store
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# With MAIL_SEND_INLINE, every reset request takes at least this long, so the
+# response time doesn't reveal whether the email belongs to an account.
+INLINE_RESET_MIN_SECONDS = 2.0
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -41,18 +46,26 @@ def request_password_reset(
     The answer is the same whether or not the email belongs to an account, and
     never contains the token: only the mailbox owner gets the link.
     """
+    started = time.monotonic()
+    inline = config.mail_send_inline()
     token = security.generate_token()
     user = store.register_password_reset_token(str(body.email), token)
     if user:
-        # Runs after the response is sent (and after the token is committed).
-        background.add_task(
-            mailer.send_password_reset,
+        email = dict(
             to=user.email,
             full_name=user.fullName,
             username=user.username,
             link=f"{config.app_base_url()}/restablecer?token={quote(token)}",
             ttl_minutes=int(PASSWORD_RESET_TTL.total_seconds() // 60),
         )
+        if inline:
+            store.session.commit()  # the link must work as soon as the email arrives
+            mailer.send_password_reset(**email)
+        else:
+            # Runs after the response is sent (and after the token is committed).
+            background.add_task(mailer.send_password_reset, **email)
+    if inline:
+        time.sleep(max(0.0, INLINE_RESET_MIN_SECONDS - (time.monotonic() - started)))
     return Response(status_code=204)
 
 

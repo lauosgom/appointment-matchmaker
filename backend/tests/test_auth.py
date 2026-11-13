@@ -159,3 +159,22 @@ def test_logout_ends_the_session(client):
 
 def test_logout_requires_a_session(client):
     assert client.post("/api/auth/logout").status_code == 401
+
+
+def test_inline_mode_sends_before_answering_with_constant_timing(client, outbox, monkeypatch):
+    import app.routers.auth as auth_router
+
+    monkeypatch.setenv("MAIL_SEND_INLINE", "true")
+    slept: list[float] = []
+    monkeypatch.setattr(auth_router.time, "sleep", slept.append)
+
+    r = client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
+    assert r.status_code == 204 and len(outbox) == 1
+    r = client.post("/api/auth/password-reset/request", json={"email": "nadie@telefono.org"})
+    assert r.status_code == 204 and len(outbox) == 1
+    # both answers are padded towards the same minimum duration
+    assert len(slept) == 2 and all(0 < s <= auth_router.INLINE_RESET_MIN_SECONDS for s in slept)
+
+    token = reset_token_from(outbox[0])
+    r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "newpass123"})
+    assert r.status_code == 204

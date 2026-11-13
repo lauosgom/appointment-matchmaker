@@ -269,6 +269,11 @@ docker run -d --name appointment-matchmaker -p 8000:8000 --network appointment-m
 Tables are created on first start. With Postgres, the data lives in the
 `appointment-matchmaker` volume, so the `/data` volume isn't needed.
 
+## Deploying
+
+To deploy to Google Cloud Run with a free Neon database and free Brevo email, see
+[deploy/gcp/README.md](deploy/gcp/README.md).
+
 ## Local development (without Docker)
 
 ```sh
