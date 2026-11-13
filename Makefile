@@ -8,7 +8,7 @@ PG_DB ?= appointment
 PG_PORT ?= 5432
 PG_URL ?= postgresql://$(PG_USER):$(PG_PASSWORD)@localhost:$(PG_PORT)/$(PG_DB)
 
-.PHONY: help run run-pg install install-backend install-frontend backend frontend dev test test-backend test-backend-pg test-frontend docker-build docker-run compose-up compose-down db-up db-down db-shell
+.PHONY: help run run-pg install install-backend install-frontend backend frontend dev test test-backend test-backend-pg test-frontend test-e2e docker-build docker-run compose-up compose-down db-up db-down db-shell
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -49,6 +49,9 @@ test-backend-pg:  ## Run backend tests against Postgres (throwaway appointment_t
 
 test-frontend:  ## Run frontend tests
 	cd frontend && npm test
+
+test-e2e:  ## Run the Playwright e2e tests against docker-compose.yaml (port 18000)
+	cd e2e && npm ci && npx playwright install chromium && npm test
 
 IMAGE ?= appointment-matchmaker
 

@@ -59,10 +59,9 @@ export const test = base.extend<Fixtures>({
       const area = await admin.createCategory("area", `Área ${tag}`);
       const specialist = await admin.createSpecialist(name ?? `Dr. E2E ${tag}`, [department.id], [area.id]);
       // One slot per hour from 08:00, `days` days ahead.
-      const slots = await admin.addSlots(
-        specialist.id,
-        Array.from({ length: slotCount }, (_, i) => at(days, 8 + i)),
-      );
+      const slots = slotCount
+        ? await admin.addSlots(specialist.id, Array.from({ length: slotCount }, (_, i) => at(days, 8 + i)))
+        : [];
       const { user, creds } = await admin.createUser("especialista", {
         specialistId: specialist.id,
         fullName: specialist.fullName,

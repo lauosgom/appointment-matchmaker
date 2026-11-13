@@ -264,4 +264,7 @@ make test      # run all tests
 
 To develop against Postgres, run `make db-up`, then `make run-pg`.
 
+End-to-end tests (Playwright, against `docker-compose.yaml`) are in
+[`e2e/`](e2e/README.md). Run them with `make test-e2e`.
+
 Run `make help` to list every target.
