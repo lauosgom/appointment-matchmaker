@@ -1,4 +1,14 @@
+import re
+from datetime import datetime, timedelta, timezone
+from urllib.parse import unquote
+
+import pytest
+from sqlalchemy import select, update
+
+from app import mailer
 from app.store import MAX_FAILED_ATTEMPTS
+from app.tables import PasswordResetTokenRow
+from tests.conftest import auth_headers
 
 
 def test_login_success_returns_user_and_token(client):
@@ -57,11 +67,32 @@ def test_login_disabled_account(client, admin_headers):
     assert r.status_code == 401
 
 
-def test_password_reset_flow(client):
+@pytest.fixture
+def outbox(monkeypatch):
+    """Captures emails instead of sending them."""
+    sent: list[dict[str, str]] = []
+    monkeypatch.setattr(mailer, "send_email", lambda to, subject, body: sent.append({"to": to, "subject": subject, "body": body}))
+    return sent
+
+
+def reset_token_from(email: dict[str, str]) -> str:
+    match = re.search(r"https?://\S+/restablecer\?token=(\S+)", email["body"])
+    assert match, email["body"]
+    return unquote(match.group(1))
+
+
+def test_password_reset_flow(client, outbox, monkeypatch):
+    monkeypatch.setenv("APP_BASE_URL", "https://citas.example.org/")
+    session = auth_headers(client, "admin", "admin123")
+
     r = client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
-    assert r.status_code == 200
-    token = r.json()["demoToken"]
-    assert token
+    assert r.status_code == 204
+    assert r.content == b""  # the token is never in the response
+
+    assert len(outbox) == 1
+    assert outbox[0]["to"] == "admin@telefono.org"
+    assert "https://citas.example.org/restablecer?token=" in outbox[0]["body"]
+    token = reset_token_from(outbox[0])
 
     r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "newpass123"})
     assert r.status_code == 204
@@ -72,15 +103,37 @@ def test_password_reset_flow(client):
     r = client.post("/api/auth/login", json={"username": "admin", "password": "newpass123"})
     assert r.status_code == 200
 
+    # sessions opened before the reset are closed
+    assert client.get("/api/users", headers=session).status_code == 401
+
     # token is single-use
     r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "another123"})
     assert r.status_code == 400
 
 
-def test_password_reset_request_unknown_email_does_not_leak(client):
+def test_password_reset_request_unknown_email_does_not_leak(client, outbox):
     r = client.post("/api/auth/password-reset/request", json={"email": "unknown@telefono.org"})
-    assert r.status_code == 200
-    assert r.json()["demoToken"] is None
+    assert r.status_code == 204
+    assert r.content == b""
+    assert outbox == []
+
+
+def test_password_reset_token_is_stored_hashed(client, outbox, db):
+    client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
+    token = reset_token_from(outbox[0])
+    stored = db.scalars(select(PasswordResetTokenRow.token)).all()
+    assert stored and token not in stored
+
+
+def test_password_reset_link_expires(client, outbox, db):
+    client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
+    token = reset_token_from(outbox[0])
+    db.execute(update(PasswordResetTokenRow).values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)))
+    db.commit()
+    r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "newpass123"})
+    assert r.status_code == 400
+    assert "venció" in r.json()["message"]
+    assert client.post("/api/auth/login", json={"username": "admin", "password": "admin123"}).status_code == 200
 
 
 def test_password_reset_confirm_invalid_token(client):
@@ -88,8 +141,21 @@ def test_password_reset_confirm_invalid_token(client):
     assert r.status_code == 400
 
 
-def test_password_reset_confirm_password_too_short(client):
-    r = client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
-    token = r.json()["demoToken"]
+def test_password_reset_confirm_password_too_short(client, outbox):
+    client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
+    token = reset_token_from(outbox[0])
     r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "short"})
     assert r.status_code == 422  # pydantic min_length rejects it before the store ever sees it
+
+
+def test_logout_ends_the_session(client):
+    headers = auth_headers(client, "orientador", "orientador123")
+    other = auth_headers(client, "orientador", "orientador123")
+    assert client.post("/api/auth/logout", headers=headers).status_code == 204
+    assert client.get("/api/assignments", headers=headers).status_code == 401
+    # only that session: another login of the same user still works
+    assert client.get("/api/assignments", headers=other).status_code == 200
+
+
+def test_logout_requires_a_session(client):
+    assert client.post("/api/auth/logout").status_code == 401

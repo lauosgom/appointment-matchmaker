@@ -128,7 +128,8 @@ export interface AppServices {
     login(username: string, password: string): Promise<User>;
     /** Drop any credentials held by the client. */
     logout(): void;
-    requestPasswordReset(email: string): Promise<{ demoToken?: string }>;
+    /** The HTTP backend emails the link; only the in-browser mock returns a demo token. */
+    requestPasswordReset(email: string): Promise<{ demoToken?: string } | void>;
     resetPassword(token: string, newPassword: string): Promise<void>;
   };
   users: {

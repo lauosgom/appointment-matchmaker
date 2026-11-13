@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, TypeDecorator, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 ID = String(40)
@@ -106,8 +106,23 @@ class SlotRow(Base):
     active: Mapped[bool] = mapped_column(Boolean)
 
 
+# Statuses that hold a slot. At most one assignment per slot may be in one of
+# them; the partial unique index below makes the database enforce it, so two
+# simultaneous bookings can't both succeed.
+OPEN_STATUS_SQL = "status IN ('pending', 'confirmed')"
+
+
 class AssignmentRow(Base):
     __tablename__ = "assignments"
+    __table_args__ = (
+        Index(
+            "uq_assignments_open_slot",
+            "slot_id",
+            unique=True,
+            postgresql_where=text(OPEN_STATUS_SQL),
+            sqlite_where=text(OPEN_STATUS_SQL),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(ID, primary_key=True)
     slot_id: Mapped[str] = mapped_column(ID, ForeignKey("slots.id"), index=True)
@@ -183,5 +198,8 @@ class LoginAttemptRow(Base):
 class PasswordResetTokenRow(Base):
     __tablename__ = "password_reset_tokens"
 
+    # SHA-256 of the token sent by email; the token itself is never stored.
     token: Mapped[str] = mapped_column(String(100), primary_key=True)
     user_id: Mapped[str] = mapped_column(ID, ForeignKey("users.id"))
+    # Null only on rows from before expiry existed; those count as expired.
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

@@ -51,7 +51,7 @@ function Recover() {
             e.preventDefault();
             try {
               const r = await services.auth.requestPasswordReset(email);
-              setToken(r.demoToken);
+              setToken(r?.demoToken);
               setSent(true);
             } catch (err) {
               setError(errorMessage(err));

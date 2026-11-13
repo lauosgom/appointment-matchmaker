@@ -87,10 +87,12 @@ export function createHttpServices({
         return r.user;
       },
       logout() {
+        // End the session on the server too; the token is read before it's cleared.
+        if (tokens.get()) void post<void>("/auth/logout").catch(() => undefined);
         tokens.set(null);
       },
-      requestPasswordReset: (email) =>
-        post<{ demoToken?: string }>("/auth/password-reset/request", { email }),
+      // The server emails the link; it never returns the token.
+      requestPasswordReset: (email) => post<void>("/auth/password-reset/request", { email }),
       resetPassword: (token, newPassword) =>
         post<void>("/auth/password-reset/confirm", { token, newPassword }),
     },

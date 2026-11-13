@@ -14,6 +14,7 @@ backend-specific (date arithmetic, etc.) is done in Python.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 import uuid
@@ -21,7 +22,8 @@ from collections.abc import Callable, Iterable, Iterator
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from . import security
@@ -66,6 +68,13 @@ PHONE_RE = re.compile(r"^[0-9+\s-]{7,15}$")
 DEFAULT_DURATION_MIN = 45
 OPEN_STATUSES = (AssignmentStatus.pending.value, AssignmentStatus.confirmed.value)
 CONFIRMATION_COUNTER = "confirmation_code"
+PASSWORD_RESET_TTL = timedelta(minutes=60)
+INVALID_RESET_LINK = "El enlace de recuperación no es válido, ya fue usado o venció. Solicita uno nuevo."
+SLOT_TAKEN = "Este horario ya no está disponible. Busca y selecciona otro espacio."
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _bad_request(message: str) -> None:
@@ -208,6 +217,38 @@ class Store:
             _not_found("No encontramos la asignación. Actualiza la lista e inténtalo de nuevo.")
         return row  # type: ignore[return-value]
 
+    def _lock_specialist(self, specialist_id: str) -> SpecialistRow | None:
+        """Lock a specialist's row for the rest of the transaction (PostgreSQL).
+
+        Every change that checks a specialist's slots for overlaps takes this lock
+        first, so two admins can't both pass the check and create an overlap.
+        """
+        return self.session.scalars(
+            select(SpecialistRow).where(SpecialistRow.id == specialist_id).with_for_update()
+        ).first()
+
+    def _lock_slot(self, slot_id: str) -> SlotRow | None:
+        return self.session.scalars(
+            select(SlotRow).where(SlotRow.id == slot_id).with_for_update().execution_options(populate_existing=True)
+        ).first()
+
+    def _change_status(self, row: AssignmentRow, expected: AssignmentStatus, message: str, **values) -> None:
+        """Move an assignment out of `expected` status, atomically.
+
+        A conditional UPDATE: if another request changed the status first (two
+        confirmations at once, a confirm racing a discard), it matches no row and
+        this request fails instead of overwriting the other one.
+        """
+        result = self.session.execute(
+            update(AssignmentRow)
+            .where(AssignmentRow.id == row.id, AssignmentRow.status == expected.value)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        if result.rowcount != 1:
+            _bad_request(message)
+        self.session.refresh(row)
+
     def find_assignment(self, assignment_id: str) -> Assignment:
         return assignment_out(self._find_assignment_row(assignment_id))
 
@@ -294,26 +335,39 @@ class Store:
             return None
         return user_out(user)
 
-    def register_password_reset_token(self, email: str, token: str) -> bool:
+    def delete_session(self, token: str) -> None:
+        self.session.execute(delete(SessionRow).where(SessionRow.token == token))
+
+    def register_password_reset_token(self, email: str, token: str) -> User | None:
+        """Store a reset token for the active user with this email, if any.
+
+        Only a hash of the token is stored; the caller emails the token itself.
+        """
         key = email.strip().lower()
         user = self.session.scalars(
             select(UserRow).where(func.lower(UserRow.email) == key, UserRow.active.is_(True))
         ).first()
         if not user:
-            return False
-        self.session.add(PasswordResetTokenRow(token=token, user_id=user.id))
+            return None
+        self.session.add(
+            PasswordResetTokenRow(token=_hash_token(token), user_id=user.id, expires_at=self.now() + PASSWORD_RESET_TTL)
+        )
         self.session.flush()
-        return True
+        return user_out(user)
 
     def reset_password(self, token: str, new_password: str) -> None:
-        row = self.session.get(PasswordResetTokenRow, token)
-        if not row:
-            _bad_request("El enlace de recuperación no es válido o ya fue usado. Solicita uno nuevo.")
+        row = self.session.get(PasswordResetTokenRow, _hash_token(token))
+        if not row or row.expires_at is None or row.expires_at <= self.now():
+            _bad_request(INVALID_RESET_LINK)
         if len(new_password) < 6:
             _bad_request("La contraseña debe tener al menos 6 caracteres.")
         user = self.session.get(UserRow, row.user_id)  # type: ignore[union-attr]
+        if not user or not user.active:
+            _bad_request(INVALID_RESET_LINK)
         user.password_hash = security.hash_password(new_password)  # type: ignore[union-attr]
-        self.session.delete(row)
+        # Every outstanding link and every open session of the user stop working.
+        self.session.execute(delete(PasswordResetTokenRow).where(PasswordResetTokenRow.user_id == user.id))  # type: ignore[union-attr]
+        self.session.execute(delete(SessionRow).where(SessionRow.user_id == user.id))  # type: ignore[union-attr]
 
     # ------------------------------------------------------------ users
     def list_users(self) -> list[User]:
@@ -484,7 +538,7 @@ class Store:
         return [(slot_out(r), r.id in booked) for r in rows]
 
     def add_slots(self, specialist_id: str, starts: list[datetime]) -> list[Slot]:
-        if not self.session.get(SpecialistRow, specialist_id):
+        if not self._lock_specialist(specialist_id):
             _bad_request("Selecciona un especialista válido.")
         if not starts:
             _bad_request("Agrega al menos una fecha y hora.")
@@ -511,6 +565,9 @@ class Store:
         row = self.session.get(SlotRow, slot_id)
         if not row:
             _not_found("Espacio no encontrado.")
+        # Lock order: specialist, then slot (same as booking takes the slot lock).
+        self._lock_specialist(row.specialist_id)
+        row = self._lock_slot(slot_id)
         if self.is_booked(slot_id):
             _bad_request("Este espacio tiene una asignación o cita; no se puede modificar.")
         if active and self.conflicts(row.specialist_id, row.start, row.duration_min, ignore_id=slot_id):  # type: ignore[union-attr]
@@ -627,13 +684,14 @@ class Store:
             _bad_request("Ingresa al menos el nombre o el número de celular de la persona.")
         if phone and not PHONE_RE.fullmatch(phone):
             _bad_request("El número de celular no es válido.")
-        slot = self.session.get(SlotRow, slot_id)
+        # Locked so a concurrent deactivation can't slip between the check and the insert.
+        slot = self._lock_slot(slot_id)
         if not slot:
             _bad_request("El horario seleccionado no existe.")
         specialist = self.session.get(SpecialistRow, slot.specialist_id)  # type: ignore[union-attr]
         now = self.now()
         if not slot.active or not (specialist and specialist.active) or self.is_booked(slot.id) or slot.start <= now:  # type: ignore[union-attr]
-            _bad_request("Este horario ya no está disponible. Busca y selecciona otro espacio.")
+            _bad_request(SLOT_TAKEN)
         row = AssignmentRow(
             id=self.new_id("as"),
             slot_id=slot.id,  # type: ignore[union-attr]
@@ -647,7 +705,12 @@ class Store:
             created_by=actor.id,
         )
         self.session.add(row)
-        self.session.flush()
+        try:
+            self.session.flush()
+        except IntegrityError:
+            # Another booking for this slot got in first (uq_assignments_open_slot).
+            # The request's transaction is rolled back by store_session.
+            _bad_request(SLOT_TAKEN)
         return assignment_out(row)
 
     def confirm_assignment(self, actor: User, assignment_id: str) -> Assignment:
@@ -661,20 +724,32 @@ class Store:
         letters_row = self.session.get(YearLettersRow, year)
         if not letters_row:
             _bad_request(f"No hay letras configuradas para el año {year}. Pide al administrador que las configure.")
+        # Claim the confirmation first, so only one request takes a number.
+        self._change_status(
+            row,
+            AssignmentStatus.pending,
+            "Solo se pueden confirmar asignaciones pendientes.",
+            status=AssignmentStatus.confirmed.value,
+            confirmed_at=now,
+            confirmed_by=actor.id,
+        )
         number = self._next_counter(CONFIRMATION_COUNTER)
         row.code = f"{letters_row.letters}{number:05d}"  # type: ignore[union-attr]
-        row.status = AssignmentStatus.confirmed.value
-        row.confirmed_at = now
-        row.confirmed_by = actor.id
         self.session.flush()
         return assignment_out(row)
 
-    def _close(self, row: AssignmentRow, new_status: AssignmentStatus, actor: User, reason: str) -> Assignment:
-        row.status = new_status.value
-        row.closed_at = self.now()
-        row.closed_by = actor.id
-        row.close_reason = reason.strip()
-        self.session.flush()
+    def _close(
+        self, row: AssignmentRow, expected: AssignmentStatus, new_status: AssignmentStatus, actor: User, reason: str, message: str
+    ) -> Assignment:
+        self._change_status(
+            row,
+            expected,
+            message,
+            status=new_status.value,
+            closed_at=self.now(),
+            closed_by=actor.id,
+            close_reason=reason.strip(),
+        )
         return assignment_out(row)
 
     def discard_assignment(self, actor: User, assignment_id: str, reason: str) -> Assignment:
@@ -685,7 +760,9 @@ class Store:
             _forbidden("Solo el orientador que inició la asignación o un administrador puede descartarla.")
         if not reason.strip():
             _bad_request("Indica el motivo del descarte.")
-        return self._close(row, AssignmentStatus.discarded, actor, reason)
+        return self._close(
+            row, AssignmentStatus.pending, AssignmentStatus.discarded, actor, reason, "Solo se pueden descartar asignaciones pendientes."
+        )
 
     def cancel_assignment(self, actor: User, assignment_id: str, reason: str) -> Assignment:
         row = self._find_assignment_row(assignment_id)
@@ -695,7 +772,9 @@ class Store:
             _bad_request("No se puede cancelar una cita cuya fecha y hora ya pasaron.")
         if not reason.strip():
             _bad_request("Indica el motivo de la cancelación.")
-        return self._close(row, AssignmentStatus.cancelled, actor, reason)
+        return self._close(
+            row, AssignmentStatus.confirmed, AssignmentStatus.cancelled, actor, reason, "Solo se pueden cancelar citas confirmadas."
+        )
 
     def request_correction(self, actor: User, assignment_id: str, message: str) -> CorrectionRequest:
         row = self._find_assignment_row(assignment_id)

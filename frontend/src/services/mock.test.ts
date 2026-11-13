@@ -44,7 +44,7 @@ describe("auth", () => {
   });
 
   it("resets the password with a valid token only once", async () => {
-    const { demoToken } = await svc.auth.requestPasswordReset("admin@telefono.org");
+    const demoToken = (await svc.auth.requestPasswordReset("admin@telefono.org"))?.demoToken;
     await svc.auth.resetPassword(demoToken!, "nueva123");
     await expect(svc.auth.login("admin", "nueva123")).resolves.toBeTruthy();
     await expect(svc.auth.resetPassword(demoToken!, "otra123")).rejects.toThrow();

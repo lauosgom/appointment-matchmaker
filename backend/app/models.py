@@ -70,10 +70,6 @@ class PasswordResetRequestBody(BaseModel):
     email: EmailStr
 
 
-class PasswordResetRequestResponse(BaseModel):
-    demoToken: str | None = None
-
-
 class PasswordResetConfirmBody(BaseModel):
     token: str
     newPassword: str = Field(min_length=6)
