@@ -7,6 +7,9 @@ export const COMPOSE_FILE = path.join(REPO_ROOT, "docker-compose.yaml");
 export const COMPOSE_PROJECT = process.env.E2E_COMPOSE_PROJECT ?? "appointment-matchmaker-e2e";
 export const PORT = process.env.E2E_PORT ?? "18000";
 export const BASE_URL = `http://localhost:${PORT}`;
+/** Mailpit (the stack's mail catcher) web UI and API. */
+export const MAIL_PORT = process.env.E2E_MAIL_PORT ?? "18025";
+export const MAIL_URL = `http://localhost:${MAIL_PORT}`;
 
 /** Must match the defaults in docker-compose.yaml. */
 export const DB_USER = "appointment";

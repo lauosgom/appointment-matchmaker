@@ -77,8 +77,10 @@ everything and can filter by specialist and status.
   role and set the initial password. A deactivated account can't log in, but its
   past actions still show who did them.
 - After 3 failed login attempts, the account is locked for 5 minutes.
-- Users who forget their password can request a reset from the login page.
-  No email is sent yet: for now the reset link appears on screen.
+- Users who forget their password can request a reset from the login page. They
+  get an email with a link that works once and expires after 60 minutes. Setting
+  a new password signs them out everywhere.
+- Logging out ends the session on the server too.
 
 ### Architecture
 
@@ -124,6 +126,13 @@ to `docker-compose.yaml`:
 | `APP_PORT` | `8000` | Port on your machine for the app |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `appointment` | Database credentials and name |
 | `SEED_DEMO_DATA` | `true` | Load the demo data into an empty database |
+| `MAIL_UI_PORT` | `8025` | Port on your machine for Mailpit, where you read the emails the app sends |
+| `APP_BASE_URL` | `http://localhost:<APP_PORT>` | Address users open the app at, used for links in emails |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM` | Mailpit | Mail server for outgoing email (see the Configuration section below) |
+
+By default, emails such as password-recovery links go to **Mailpit**, a mail catcher
+that keeps them instead of delivering them. Read them at http://localhost:8025. To
+deliver real email, set the `SMTP_*` variables to your mail provider.
 
 The database port isn't published to your machine. To open `psql`, run
 `docker compose exec db psql -U appointment -d appointment`.
@@ -214,6 +223,12 @@ Pass environment variables with `-e`:
 |---|---|---|
 | `DATABASE_URL` | `sqlite:////data/appointments.db` | SQLAlchemy database URL: SQLite or PostgreSQL (`postgresql://user:pass@host:5432/db`) |
 | `SEED_DEMO_DATA` | `true` | Load the demo data into an empty database on startup |
+| `APP_BASE_URL` | `http://localhost:8000` | Address users open the app at; links in emails point here |
+| `SMTP_HOST` | (unset) | Mail server for password-recovery emails. Unset: nothing is sent, and a warning is logged |
+| `SMTP_PORT` | `587` (`465` for `ssl`, `25` for `none`) | Mail server port |
+| `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | (unset) | Mail server login, if it needs one |
+| `MAIL_FROM` | `Citas con especialistas <no-reply@localhost>` | Sender of the emails |
 
 Example:
 

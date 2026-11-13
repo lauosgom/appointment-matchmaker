@@ -19,6 +19,16 @@ Configured with environment variables:
 |---|---|---|
 | `DATABASE_URL` | `sqlite:///<backend>/appointments.db` | any [SQLAlchemy URL](https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls) |
 | `SEED_DEMO_DATA` | `true` | load the demo users/catalogs/slots below into an **empty** database on startup |
+| `APP_BASE_URL` | `http://localhost:8000` | public address of the app, used to build links in emails (never taken from the request's `Host` header) |
+| `SMTP_HOST` | unset | SMTP server for password-recovery emails; unset → nothing is sent and a warning is logged |
+| `SMTP_PORT` | `587` / `465` / `25` | depends on `SMTP_SECURITY` |
+| `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | unset | SMTP login, if needed |
+| `MAIL_FROM` | `Citas con especialistas <no-reply@localhost>` | sender address |
+
+To read emails locally, run a mail catcher such as Mailpit
+(`docker run -p 8025:8025 -p 1025:1025 axllent/mailpit:v1.27`) and start the API
+with `SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURITY=none`.
 
 ```sh
 DATABASE_URL=sqlite:////var/data/appointments.db uv run uvicorn app.main:app
@@ -67,11 +77,12 @@ TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/test uv run pytest
 ## Layout
 
 - `app/models.py` — Pydantic request/response schemas.
-- `app/config.py` — environment-variable settings (`DATABASE_URL`, `SEED_DEMO_DATA`); maps plain Postgres URLs to psycopg.
-- `app/db.py` — engine/session setup; the only backend-specific code (SQLite pragmas, pooling).
+- `app/config.py` — environment-variable settings (database, demo data, `APP_BASE_URL`, SMTP); maps plain Postgres URLs to psycopg.
+- `app/db.py` — engine/session setup; the only backend-specific code (SQLite pragmas, pooling). On startup it also upgrades databases from earlier versions (missing columns and indexes).
 - `app/tables.py` — SQLAlchemy ORM tables (portable types; datetimes stored as UTC).
 - `app/store.py` — all business rules (conflict checks, role/ownership checks, confirmation codes, etc.) over a SQLAlchemy session, raising `HTTPException` with the Spanish messages the frontend displays as-is. One transaction per request via `get_store`.
 - `app/seed.py` — demo data loaded into an empty database.
 - `app/security.py` — password hashing and bearer-token generation (pure functions, no FastAPI/store dependency).
+- `app/mailer.py` — outgoing email over SMTP (password-recovery links), sent in the background after the response.
 - `app/auth.py` — `get_current_user` / `require_roles` FastAPI dependencies built on top of the `sessions` table.
 - `app/routers/` — one module per resource group; thin HTTP layer over `Store` methods.

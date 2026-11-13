@@ -5,10 +5,6 @@ import { ADMIN, ORIENTADOR } from "../support/env";
 import { CODE_RE, expect, row, test, toast } from "../support/fixtures";
 import { at, colombiaYear, dayKey } from "../support/time";
 
-// Edit dialogs grow with every department/area and don't scroll (see the
-// usability spec), so admin pages here use a tall window to reach "Guardar".
-const TALL = { viewport: { width: 1280, height: 2400 } };
-
 test.describe("Scenario 8 – deactivating specialists and categories", () => {
   test("specialist without pending appointments: no warning, gone from new searches", async ({
     admin,
@@ -17,7 +13,7 @@ test.describe("Scenario 8 – deactivating specialists and categories", () => {
     makeWorld,
   }) => {
     const w = await makeWorld();
-    const page = await uiAs(ADMIN, TALL);
+    const page = await uiAs(ADMIN);
     await page.goto("/admin/especialistas");
     await row(page, w.specialist.code).getByRole("button", { name: "Editar" }).click();
     const dialog = page.getByRole("dialog");
@@ -51,7 +47,7 @@ test.describe("Scenario 8 – deactivating specialists and categories", () => {
     const w = await makeWorld();
     const appt = await orientador.confirm((await orientador.book(w.slots[0]!.id)).id);
 
-    const page = await uiAs(ADMIN, TALL);
+    const page = await uiAs(ADMIN);
     await page.goto("/admin/especialistas");
     await row(page, w.specialist.code).getByRole("button", { name: "Editar" }).click();
     const dialog = page.getByRole("dialog");
@@ -79,7 +75,7 @@ test.describe("Scenario 8 – deactivating specialists and categories", () => {
   }) => {
     const w = await makeWorld();
     const appt = await orientador.confirm((await orientador.book(w.slots[0]!.id)).id);
-    const page = await uiAs(ADMIN, TALL);
+    const page = await uiAs(ADMIN);
     await page.goto("/admin/catalogos");
 
     // Department with an associated specialist (and one appointment).

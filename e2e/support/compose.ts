@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
 
-import { BASE_URL, COMPOSE_FILE, COMPOSE_PROJECT, DB_NAME, DB_USER, PORT } from "./env";
+import { BASE_URL, COMPOSE_FILE, COMPOSE_PROJECT, DB_NAME, DB_USER, MAIL_PORT, PORT } from "./env";
 
-const env = { ...process.env, APP_PORT: PORT };
+const env = { ...process.env, APP_PORT: PORT, MAIL_UI_PORT: MAIL_PORT };
 
 /** Runs `docker compose` against the e2e project and returns stdout. */
 export function compose(args: string[], opts: { input?: string; quiet?: boolean } = {}): string {

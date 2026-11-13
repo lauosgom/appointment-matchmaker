@@ -129,9 +129,12 @@ test.describe("security basics", () => {
     await logoutUI(page);
 
     const anon = await request.newContext({ baseURL: BASE_URL });
-    const r = await anon.get("/api/assignments", { headers: { Authorization: `Bearer ${token}` } });
+    await expect
+      .poll(async () => (await anon.get("/api/assignments", { headers: { Authorization: `Bearer ${token}` } })).status(), {
+        message: "a token used before logging out must stop working",
+      })
+      .toBe(401);
     await anon.dispose();
-    expect(r.status(), "a token used before logging out must stop working").toBe(401);
   });
 
   test("no personal data in the HTML of public pages", async ({ page }) => {

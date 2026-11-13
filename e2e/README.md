@@ -33,6 +33,7 @@ are in `test-results/`.
 | Variable | Default | Effect |
 |---|---|---|
 | `E2E_PORT` | `18000` | Port for the app under test |
+| `E2E_MAIL_PORT` | `18025` | Port for the stack's Mailpit, where the tests read the emails the app sends |
 | `E2E_KEEP` | unset | Keep the stack and its data after the run, and reuse it on the next run instead of starting fresh |
 | `E2E_NO_BUILD` | unset | Don't rebuild the image (faster when only the tests changed) |
 | `E2E_PERF_BUDGET_MS` | `1000` | Response-time budget for the performance test |
@@ -53,8 +54,10 @@ E2E_KEEP=1 E2E_NO_BUILD=1 npx playwright test --headed     # watch the browser
   demo data, except for the demo `admin` and `orientador` logins.
 - Main flows go through the UI. Rules that must hold on the server (permissions,
   concurrent requests) are also checked with direct API calls.
+- Emails (password-recovery links) are read from the stack's Mailpit through its
+  API (`support/mail.ts`).
 - Some situations can't be produced through the app: an appointment whose time has
-  already passed, an expired lockout, or a session ended on the server. For these,
+  already passed, an expired lockout or recovery link, or a session ended on the server. For these,
   the tests change the database directly with `docker compose exec db psql`
   (`support/compose.ts`).
 
@@ -74,8 +77,5 @@ E2E_KEEP=1 E2E_NO_BUILD=1 npx playwright test --headed     # watch the browser
   understand the search and can tell statuses apart without instructions.
 - **Browsers other than Chromium**: add Firefox or WebKit projects in
   `playwright.config.ts` if needed.
-- **Tests marked `fixme`**, which are skipped:
-  - A confirmation made in the next year. This needs control over the server
-    clock.
-  - Recovery links sent by email. The app doesn't send email yet.
-  - Expired recovery links. Recovery tokens have no expiry yet.
+- **A confirmation made in the next year** (`fixme`, skipped): this needs control
+  over the server clock.

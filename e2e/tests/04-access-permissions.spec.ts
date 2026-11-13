@@ -1,9 +1,11 @@
 // Section 4: access and permissions, through the UI and by direct requests.
-import { request } from "@playwright/test";
+import { request, type Page } from "@playwright/test";
 
+import { Api } from "../support/api";
 import { lit, sql } from "../support/compose";
 import { ADMIN, BASE_URL, ESPECIALISTA, ORIENTADOR } from "../support/env";
 import { expect, loginUI, searchBySpecialist, test, toast } from "../support/fixtures";
+import { resetLink, waitForEmail } from "../support/mail";
 
 test.describe("Access and permissions", () => {
   test("counselor cannot cancel an appointment, nor confirm another counselor's assignment", async ({
@@ -118,53 +120,81 @@ test.describe("Access and permissions", () => {
     await expect(page).toHaveURL(/\/menu$/);
   });
 
-  test("password reset through the recovery link", async ({ admin, page }) => {
-    const { user, creds } = await admin.createUser("orientador");
+  const INVALID_LINK = "El enlace de recuperación no es válido, ya fue usado o venció. Solicita uno nuevo.";
+
+  async function requestReset(page: Page, email: string) {
     await page.goto("/");
     await page.getByRole("link", { name: "¿Olvidaste tu contraseña?" }).click();
-    await page.locator("#email").fill(user.email);
+    await page.locator("#email").fill(email);
     await page.getByRole("button", { name: "Enviar enlace" }).click();
     await expect(page.getByText("Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.")).toBeVisible();
+  }
 
-    // No email is sent yet: in demo mode the link is shown on screen.
-    await page.getByRole("link", { name: "abrir el enlace de recuperación" }).click();
-    await expect(page).toHaveURL(/\/restablecer\?token=/);
-    const resetUrl = page.url();
-    await page.locator("#pw").fill("nueva-clave-123");
-    await page.locator("#pw2").fill("nueva-clave-123");
+  async function setNewPassword(page: Page, password: string) {
+    await page.locator("#pw").fill(password);
+    await page.locator("#pw2").fill(password);
     await page.getByRole("button", { name: "Guardar contraseña" }).click();
+  }
+
+  test("password reset: the recovery link arrives by email and works once", async ({ admin, apiAs, page }) => {
+    const { user, creds } = await admin.createUser("orientador");
+    const openSession = await apiAs(creds);
+    await requestReset(page, user.email);
+    // Nothing on screen lets the requester reset the account without the mailbox.
+    await expect(page.getByRole("link", { name: /enlace de recuperación/ })).toHaveCount(0);
+
+    const email = await waitForEmail(user.email);
+    expect(email.subject).toBe("Restablece tu contraseña — Citas con especialistas");
+    expect(email.text).toContain(user.fullName);
+    expect(email.text).toContain("60 minutos");
+    const link = resetLink(email.text);
+    expect(link.startsWith(`${BASE_URL}/restablecer?token=`)).toBe(true);
+
+    await page.goto(link);
+    await setNewPassword(page, "nueva-clave-123");
     await expect(page.getByText("Tu contraseña fue actualizada. Ya puedes iniciar sesión.")).toBeVisible();
 
     const anon = await request.newContext({ baseURL: BASE_URL });
     expect((await anon.post("/api/auth/login", { data: creds })).status()).toBe(401);
     expect((await anon.post("/api/auth/login", { data: { username: creds.username, password: "nueva-clave-123" } })).status()).toBe(200);
-
-    // Unknown emails get the same answer (no account enumeration) and no link.
-    const unknown = await anon.post("/api/auth/password-reset/request", { data: { email: "nadie@example.org" } });
-    expect(await unknown.json()).toEqual({ demoToken: null });
     await anon.dispose();
+    // Sessions opened before the reset are closed.
+    expect((await openSession.get("/assignments")).status()).toBe(401);
 
-    // A used link is rejected.
-    await page.goto(resetUrl);
-    await page.locator("#pw").fill("otra-clave-123");
-    await page.locator("#pw2").fill("otra-clave-123");
-    await page.getByRole("button", { name: "Guardar contraseña" }).click();
-    await expect(page.getByText("El enlace de recuperación no es válido o ya fue usado. Solicita uno nuevo.")).toBeVisible();
+    // The same link can't be used again.
+    await page.goto(link);
+    await setNewPassword(page, "otra-clave-123");
+    await expect(page.getByText(INVALID_LINK)).toBeVisible();
+  });
 
-    // So is a made-up one.
+  test("password reset: the API never hands out the token, for known or unknown emails", async ({ admin }) => {
+    const { user } = await admin.createUser("orientador");
+    const anon = await request.newContext({ baseURL: BASE_URL });
+    for (const email of [user.email, `nadie-${Date.now()}@example.org`]) {
+      const r = await anon.post("/api/auth/password-reset/request", { data: { email } });
+      expect(r.status(), email).toBe(204);
+      expect(await r.text(), email).toBe("");
+    }
+    await anon.dispose();
+    // The token is stored hashed, so the database doesn't hold a usable link either.
+    const token = new URL(resetLink((await waitForEmail(user.email)).text)).searchParams.get("token")!;
+    expect(sql(`SELECT count(*) FROM password_reset_tokens WHERE token = ${lit(token)}`)).toEqual([["0"]]);
+  });
+
+  test("password reset: expired and made-up links are rejected", async ({ admin, page }) => {
+    const { user, creds } = await admin.createUser("orientador");
+    await requestReset(page, user.email);
+    const link = resetLink((await waitForEmail(user.email)).text);
+    // 60 minutes later (simulated).
+    sql(`UPDATE password_reset_tokens SET expires_at = (now() AT TIME ZONE 'utc') - interval '1 second' WHERE user_id = ${lit(user.id)}`);
+    await page.goto(link);
+    await setNewPassword(page, "nueva-clave-123");
+    await expect(page.getByText(INVALID_LINK)).toBeVisible();
+    await (await Api.login(creds)).dispose(); // the old password still works
+
     await page.goto("/restablecer?token=inventado-123");
-    await page.locator("#pw").fill("otra-clave-123");
-    await page.locator("#pw2").fill("otra-clave-123");
-    await page.getByRole("button", { name: "Guardar contraseña" }).click();
-    await expect(page.getByText("El enlace de recuperación no es válido o ya fue usado. Solicita uno nuevo.")).toBeVisible();
-  });
-
-  test.fixme("the recovery link is sent by email", async () => {
-    // Expected by the test plan; the app does not send email yet (the link is shown on screen).
-  });
-
-  test.fixme("an expired recovery link is rejected", async () => {
-    // Recovery tokens have no expiry time yet (password_reset_tokens has no timestamp).
+    await setNewPassword(page, "otra-clave-123");
+    await expect(page.getByText(INVALID_LINK)).toBeVisible();
   });
 
   test("other roles' pages are blocked when the URL is typed directly", async ({ browser, makeWorld }) => {

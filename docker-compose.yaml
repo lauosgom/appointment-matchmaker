@@ -1,8 +1,13 @@
-# The app and its PostgreSQL database.
-#   docker compose up -d --build   # http://localhost:8000
+# The app, its PostgreSQL database and a local mail catcher.
+#   docker compose up -d --build   # app: http://localhost:8000, emails: http://localhost:8025
 #   docker compose down            # stop (data is kept in the pgdata volume)
 #   docker compose down -v         # stop and delete the data
 # Override the defaults below with environment variables or a .env file.
+#
+# Emails (password-recovery links) go to Mailpit, which keeps them for you to
+# read in its web UI instead of delivering them. For real delivery, set SMTP_HOST,
+# SMTP_PORT, SMTP_SECURITY, SMTP_USERNAME, SMTP_PASSWORD and MAIL_FROM to your
+# mail provider, and APP_BASE_URL to the address users open the app at.
 
 services:
   db:
@@ -20,6 +25,12 @@ services:
       timeout: 5s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - "${MAIL_UI_PORT:-8025}:8025"
+
   app:
     build: .
     image: appointment-matchmaker
@@ -27,9 +38,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-appointment}:${POSTGRES_PASSWORD:-appointment}@db:5432/${POSTGRES_DB:-appointment}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:${APP_PORT:-8000}}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURITY: ${SMTP_SECURITY:-none}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Citas con especialistas <citas@localhost>}
     ports:
       - "${APP_PORT:-8000}:8000"
 
