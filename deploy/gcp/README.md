@@ -38,13 +38,22 @@ alone:
 
 ## 2. Database: Neon
 
-1. Sign up at https://neon.com and create a project. Pick the region
-   **AWS US East 1 (N. Virginia)**, which is close to the Cloud Run region
-   `us-east1`.
-2. On the project dashboard, click **Connect**. Turn **Connection pooling off**, then
-   copy the connection string. It looks like
-   `postgresql://user:password@ep-….us-east-1.aws.neon.tech/neondb?sslmode=require`.
-   Keep it private: it gives full access to the data.
+This repo is already linked to the Neon project `gentle-frost-94428278` (region
+AWS us-east-1). Setting that up on another machine:
+
+```sh
+npm i -g neon@latest   # or: npm i -g --prefix ~/.local neon@latest
+neon login
+neon init -y --agent claude-code --org-id org-billowing-grass-26413695 --project-id gentle-frost-94428278
+```
+
+`neon init` writes the connection strings to `.env.local` at the repo root, which git
+ignores. `deploy.sh` and `make create-admin` read `DATABASE_URL_UNPOOLED` from that
+file. They use the direct connection because the app keeps its own connection pool.
+Keep `.env.local` private: it gives full access to the data.
+
+`neon init` also adds `neon.ts`, `package.json` and `.neon` for Neon's own tooling.
+The Python app doesn't use them.
 
 ## 3. Email: Brevo
 
@@ -78,8 +87,8 @@ The first run:
 1. Enables the Cloud Run, Artifact Registry and Secret Manager APIs.
 2. Creates the image repository (`appointment-matchmaker`) and the service account
    (`appointment-matchmaker-run`).
-3. Asks for the **Neon connection string** and the **Brevo SMTP key**, and stores
-   them in Secret Manager.
+3. Stores the **Neon connection string** (from `.env.local`) and the **Brevo SMTP
+   key** (it asks you for this) in Secret Manager.
 4. Builds the image, pushes it and deploys the Cloud Run service.
 5. Checks that the app answers.
 
@@ -101,16 +110,14 @@ redeploys. To replace the stored database URL or SMTP key, run
 
 ## 6. Create the first administrator
 
-The production database starts empty. From the `backend/` folder, using the Neon
-connection string:
+The production database starts empty. From the repo root:
 
 ```sh
-cd backend
-DATABASE_URL='postgresql://…neon.tech/neondb?sslmode=require' \
-  uv run python -m app.manage create-admin --username ana --full-name "Ana Pérez" --email ana@example.org
+make create-admin
 ```
 
-It asks for the password. The email is used for password recovery. Then open the
+It asks for the username, full name, email (used for password recovery) and
+password, and creates the account in the Neon database from `.env.local`. Then open the
 app, log in, and go to **Configuración**:
 
 - Set the **letters for the current year**. Appointments can't be confirmed without

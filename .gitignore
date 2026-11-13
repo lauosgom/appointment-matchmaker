@@ -1,0 +1,6 @@
+# Local secrets (e.g. Neon connection strings written by `neon init`)
+.env
+.env.*
+!.env.example
+.neon
+node_modules/

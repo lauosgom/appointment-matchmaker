@@ -8,7 +8,7 @@ PG_DB ?= appointment
 PG_PORT ?= 5432
 PG_URL ?= postgresql://$(PG_USER):$(PG_PASSWORD)@localhost:$(PG_PORT)/$(PG_DB)
 
-.PHONY: help run run-pg install install-backend install-frontend backend frontend dev test test-backend test-backend-pg test-frontend test-e2e docker-build docker-run compose-up compose-down db-up db-down db-shell
+.PHONY: create-admin help run run-pg install install-backend install-frontend backend frontend dev test test-backend test-backend-pg test-frontend test-e2e docker-build docker-run compose-up compose-down db-up db-down db-shell
 
 help:  ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -52,6 +52,12 @@ test-frontend:  ## Run frontend tests
 
 test-e2e:  ## Run the Playwright e2e tests against docker-compose.yaml (port 18000)
 	cd e2e && npm ci && npx playwright install chromium && npm test
+
+create-admin:  ## Create an admin in the Neon database from .env.local (prompts for the details)
+	@test -f .env.local || { echo "No .env.local: run 'neon init' first (see deploy/gcp/README.md)."; exit 1; }
+	@read -p "Username: " u; read -p "Full name: " n; read -p "Email (for password recovery): " e; \
+	set -a; . ./.env.local; set +a; \
+	cd backend && DATABASE_URL="$$DATABASE_URL_UNPOOLED" uv run python -m app.manage create-admin --username "$$u" --full-name "$$n" --email "$$e"
 
 IMAGE ?= appointment-matchmaker
 

@@ -10,3 +10,5 @@ frontend/.output
 frontend/.tanstack
 frontend/.nitro
 e2e
+.env
+.env.*

@@ -68,12 +68,16 @@ if ! g iam service-accounts describe "$SA" >/dev/null 2>&1; then
   g iam service-accounts create "$SA_NAME" --display-name="$SERVICE (Cloud Run)"
 fi
 
-ensure_secret() { # name, prompt
-  local name="$1" prompt="$2" value
+ensure_secret() { # name, prompt, [value: used instead of asking]
+  local name="$1" prompt="$2" value="${3:-}"
   if g secrets describe "$name" >/dev/null 2>&1 && [[ "$UPDATE_SECRETS" == false ]]; then
     echo "Secret $name already exists (run with --update-secrets to replace it)."
   else
-    read -r -s -p "$prompt: " value; echo
+    if [[ -n "$value" ]]; then
+      echo "$prompt: taken from .env.local"
+    else
+      read -r -s -p "$prompt: " value; echo
+    fi
     [[ -n "$value" ]] || { echo "Empty value." >&2; exit 1; }
     if g secrets describe "$name" >/dev/null 2>&1; then
       printf '%s' "$value" | g secrets versions add "$name" --data-file=-
@@ -86,8 +90,15 @@ ensure_secret() { # name, prompt
     --role=roles/secretmanager.secretAccessor >/dev/null
 }
 
+# The direct (unpooled) Neon connection string written by `neon init` to
+# .env.local at the repo root; the app keeps its own connection pool.
+NEON_URL=""
+if [[ -f "$ROOT/.env.local" ]]; then
+  NEON_URL="$(sed -n 's/^DATABASE_URL_UNPOOLED=//p' "$ROOT/.env.local" | tail -1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+fi
+
 step "Secrets"
-ensure_secret "$SECRET_DB" "Neon connection string (postgresql://…)"
+ensure_secret "$SECRET_DB" "Neon connection string (postgresql://…)" "$NEON_URL"
 ensure_secret "$SECRET_SMTP" "Brevo SMTP key"
 
 step "Building and pushing $IMAGE"
