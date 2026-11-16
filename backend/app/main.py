@@ -31,8 +31,9 @@ def init_database() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_database()
-    telemetry.setup(_app)
+    telemetry.setup(_app, db.get_engine(), db.get_session_factory())
     yield
+    telemetry.shutdown()
 
 
 app = FastAPI(title="Appointment Matchmaker API", version="1.0.0", lifespan=lifespan)

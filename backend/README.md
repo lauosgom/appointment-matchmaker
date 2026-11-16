@@ -29,9 +29,9 @@ Configured with environment variables:
 
 ## Telemetry (OpenTelemetry)
 
-HTTP requests are traced (SQL queries are not: the SQLAlchemy instrumentation does not yet support SQLAlchemy 2.1) and exported over OTLP/HTTP when
-`OTEL_EXPORTER_OTLP_ENDPOINT` is set; without it nothing is exported
-(`OTEL_SDK_DISABLED=true` forces it off). Every span's resource carries:
+Traces and metrics are exported over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT`
+is set; without it nothing is exported (`OTEL_SDK_DISABLED=true` forces it off).
+Every span and data point carries:
 
 | attribute | source | default |
 |---|---|---|
@@ -39,7 +39,24 @@ HTTP requests are traced (SQL queries are not: the SQLAlchemy instrumentation do
 | `deployment.environment.name` | `APP_ENV` (set by the deploy: `dev`, `production`) | `local` |
 | `service.version` | `APP_VERSION` (the image tag, baked in at build time; promotion to production keeps it) | `dev` |
 
-`/api/health` is not traced. Standard `OTEL_*` variables (headers, sampler…) also work.
+HTTP requests are traced (`/api/health` is not; SQL queries are not either: the
+SQLAlchemy instrumentation does not support SQLAlchemy 2.1). Metrics, defined in
+`app/metrics.py`:
+
+| metric | meaning |
+|---|---|
+| `slots.count` (gauge, `state` = open / held / confirmed) | upcoming slots by state |
+| `assignments.transitions` (counter, `outcome` = held / confirmed / discarded / cancelled) | hold-to-confirm rate = confirmed / held |
+| `bookings.conflicts` (counter, `reason` = already_booked / concurrent_booking) | attempts to book a slot someone holds |
+| `http.server.request.duration` (histogram, by `http.route` and status) | p95 latency and 5xx rate per route |
+| `db.query.duration`, `db.health.check.duration` (histograms), `db.health.failures` (counter) | database latency and reachability |
+
+Counters are incremented when the operation succeeds, just before the request's
+transaction commits, so a commit that then fails would still be counted. The
+`slots.count` gauge runs three small queries each export interval
+(`OTEL_METRIC_EXPORT_INTERVAL`, 60 s by default). On Cloud Run with request-based
+billing the CPU is throttled between requests, so metrics are exported mostly while
+the service is serving traffic. Standard `OTEL_*` variables (headers, sampler, …) also work.
 
 To read emails locally, run a mail catcher such as Mailpit
 (`docker run -p 8025:8025 -p 1025:1025 axllent/mailpit:v1.27`) and start the API

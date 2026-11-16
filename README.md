@@ -273,7 +273,7 @@ Pass environment variables with `-e`:
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | (unset) | Mail server login, if it needs one |
 | `MAIL_FROM` | `Citas con especialistas <no-reply@localhost>` | Sender of the emails |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP/HTTP endpoint for traces. Unset: no telemetry is exported. See [Observability](#observability) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP/HTTP endpoint for traces and metrics. Unset: no telemetry is exported. See [Observability](#observability) |
 | `APP_ENV` | `local` | Environment name reported in telemetry (the deploys set `dev` / `production`) |
 | `APP_VERSION` | `dev` | Version reported in telemetry (the image build sets it to the image tag) |
 
@@ -388,23 +388,26 @@ push / pull request
 
 ## Observability
 
-The backend is instrumented with OpenTelemetry: HTTP requests are traced and
-exported over OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (SQL queries are not
-traced yet: the SQLAlchemy instrumentation does not support SQLAlchemy 2.1). Every
-span carries `service.name`, `deployment.environment.name` (`APP_ENV`) and
+The backend is instrumented with OpenTelemetry. HTTP requests are traced, and
+five groups of metrics are recorded: slots by state, hold-to-confirm rate, booking
+conflicts, latency and errors per route, and database health. Both are exported
+over OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (SQL queries are not traced
+yet: the SQLAlchemy instrumentation does not support SQLAlchemy 2.1). Every span
+and metric carries `service.name`, `deployment.environment.name` (`APP_ENV`) and
 `service.version` (`APP_VERSION`, the image tag, so a promoted image keeps its
 version). Details are in [backend/README.md](backend/README.md#telemetry-opentelemetry).
 
 [`observability/`](observability/README.md) is a separate Docker Compose project
 (independent of the app stack) with an OpenTelemetry Collector that routes traces to
-Tempo, metrics to Prometheus and logs to Loki, plus Grafana to explore them:
+Tempo, metrics to Prometheus and logs to Loki, plus Grafana with a ready-made
+dashboard for those metrics:
 
 ```sh
 cd observability && docker compose up -d    # Grafana: http://localhost:3000 (admin / admin)
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 APP_ENV=local make run
 ```
 
-Only traces are produced so far; the metrics and logs pipelines are ready for later.
+Traces and metrics are produced so far; the logs pipeline is ready for later.
 The dev and production services export nothing until `OTEL_EXPORTER_OTLP_ENDPOINT`
 is set in `deploy/gcp/config*.env`.
 

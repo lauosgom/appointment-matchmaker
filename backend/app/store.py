@@ -26,7 +26,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import security
+from . import metrics, security
 from .colombia_time import colombia_day_key, colombia_year
 from .db import get_session_factory
 from .models import (
@@ -690,7 +690,10 @@ class Store:
             _bad_request("El horario seleccionado no existe.")
         specialist = self.session.get(SpecialistRow, slot.specialist_id)  # type: ignore[union-attr]
         now = self.now()
-        if not slot.active or not (specialist and specialist.active) or self.is_booked(slot.id) or slot.start <= now:  # type: ignore[union-attr]
+        if self.is_booked(slot.id):  # type: ignore[union-attr]
+            metrics.conflicts.add(1, {"reason": "already_booked"})
+            _bad_request(SLOT_TAKEN)
+        if not slot.active or not (specialist and specialist.active) or slot.start <= now:  # type: ignore[union-attr]
             _bad_request(SLOT_TAKEN)
         row = AssignmentRow(
             id=self.new_id("as"),
@@ -710,7 +713,9 @@ class Store:
         except IntegrityError:
             # Another booking for this slot got in first (uq_assignments_open_slot).
             # The request's transaction is rolled back by store_session.
+            metrics.conflicts.add(1, {"reason": "concurrent_booking"})
             _bad_request(SLOT_TAKEN)
+        metrics.transitions.add(1, {"outcome": "held"})
         return assignment_out(row)
 
     def confirm_assignment(self, actor: User, assignment_id: str) -> Assignment:
@@ -736,6 +741,7 @@ class Store:
         number = self._next_counter(CONFIRMATION_COUNTER)
         row.code = f"{letters_row.letters}{number:05d}"  # type: ignore[union-attr]
         self.session.flush()
+        metrics.transitions.add(1, {"outcome": "confirmed"})
         return assignment_out(row)
 
     def _close(
@@ -760,9 +766,11 @@ class Store:
             _forbidden("Solo el orientador que inició la asignación o un administrador puede descartarla.")
         if not reason.strip():
             _bad_request("Indica el motivo del descarte.")
-        return self._close(
+        closed = self._close(
             row, AssignmentStatus.pending, AssignmentStatus.discarded, actor, reason, "Solo se pueden descartar asignaciones pendientes."
         )
+        metrics.transitions.add(1, {"outcome": "discarded"})
+        return closed
 
     def cancel_assignment(self, actor: User, assignment_id: str, reason: str) -> Assignment:
         row = self._find_assignment_row(assignment_id)
@@ -772,9 +780,11 @@ class Store:
             _bad_request("No se puede cancelar una cita cuya fecha y hora ya pasaron.")
         if not reason.strip():
             _bad_request("Indica el motivo de la cancelación.")
-        return self._close(
+        closed = self._close(
             row, AssignmentStatus.confirmed, AssignmentStatus.cancelled, actor, reason, "Solo se pueden cancelar citas confirmadas."
         )
+        metrics.transitions.add(1, {"outcome": "cancelled"})
+        return closed
 
     def request_correction(self, actor: User, assignment_id: str, message: str) -> CorrectionRequest:
         row = self._find_assignment_row(assignment_id)
