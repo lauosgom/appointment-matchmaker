@@ -5,38 +5,22 @@ A web app for matching appointments with specialists. It has two parts:
 - `backend/`: a FastAPI API (see [backend/README.md](backend/README.md))
 - `frontend/`: a React/TanStack app (see [frontend/README.md](frontend/README.md))
 
+A separate Compose project, [`observability/`](observability/README.md), runs a local
+telemetry stack (OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana).
+
 The API contract is in [openapi.yaml](openapi.yaml).
 
 **Live app (production):** https://appointment-matchmaker-prod-42649326635.us-east1.run.app/ (Google Cloud Run; see [Deployment](#deployment)). Dev: https://appointment-matchmaker-42649326635.us-east1.run.app/. The first visit after a quiet period takes a few seconds while it wakes up.
 
 ## The problem
 
-A support line's counselors take calls from people who need a follow-up with a
-specialist (a psychologist, a lawyer, and so on). Matching each caller with a free
-slot used to be manual, which causes double bookings, lost bookings and no record of
-who booked what. This app replaces that with one shared schedule.
+The Telefono de la Esperanza (Phone of Hope) is a non-governmental organisation dedicated to mental health. One of their main services is a crisis helpline, where people can call for psychological support or simply to be listened to. All calls are answered by an expert, the 'orientador' (counselor), who listens and offers advice on next steps. When a caller needs a follow-up with a specialist, such as a psychologist or a lawyer, the counselor has to find them a free appointment.
 
-**What the system does:**
+Currently, matching each caller with a free slot is done manually. This is time-consuming and error-prone: it causes double bookings, lost bookings and leaves no record of who booked what. To solve this, I have designed a web application that replaces the manual process with one shared schedule. Admins load each specialist's availability as time slots. Counselors search for open slots, hold one for the caller and confirm it to get a unique appointment code. Admins manage users, specialists, departments and areas, cancel confirmed appointments and review correction requests, and specialists see their own confirmed appointments.
 
-- Admins load each specialist's availability as time slots.
-- Counselors search for open slots, hold one for a caller, and confirm it to get a
-  unique appointment code.
-- Admins manage users, specialists, departments and areas, cancel confirmed
-  appointments and review correction requests.
-- Specialists see their own confirmed appointments.
+The system guarantees that a slot can never be booked twice, even when two counselors try at the same time, and that a held slot is either confirmed or freed up. Confirmed appointments can't be changed by counselors, who send a correction request to an admin instead. Each role sees only what it is allowed to do, the reason for a call is never stored, times are shown in Colombia time (UTC-5) and the interface is in Spanish. The backend is a FastAPI API on PostgreSQL, the frontend is a React app, and both run as one container on Google Cloud Run, deployed through a GitHub Actions CI/CD pipeline with separate dev and production environments.
 
-**Expected behavior:**
-
-- A slot can never be booked twice, even when two counselors try at the same time.
-- A held slot is either confirmed (it gets a code) or discarded (it frees up).
-- Counselors can't change a confirmed appointment. They send a correction request
-  to an admin.
-- Each role sees only what it is allowed to do.
-- The reason for a call is never stored.
-- Times are shown in Colombia time (UTC−5), and the interface is in Spanish.
-
-The details are in the sections below and in the full spec
-([docs/spec.md](docs/spec.md)).
+The details are in the sections below and in the full spec ([docs/spec.md](docs/spec.md)). More information about Telefono de la Esperanza here: https://telefonodelaesperanza.org/
 
 ## How the application works
 
@@ -289,6 +273,9 @@ Pass environment variables with `-e`:
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | (unset) | Mail server login, if it needs one |
 | `MAIL_FROM` | `Citas con especialistas <no-reply@localhost>` | Sender of the emails |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP/HTTP endpoint for traces. Unset: no telemetry is exported. See [Observability](#observability) |
+| `APP_ENV` | `local` | Environment name reported in telemetry (the deploys set `dev` / `production`) |
+| `APP_VERSION` | `dev` | Version reported in telemetry (the image build sets it to the image tag) |
 
 Example:
 
@@ -398,6 +385,28 @@ push / pull request
   Environment, so the dev pipeline, pull requests and forks can't deploy to production.
 - **Setup:** `./deploy/gcp/setup-github-oidc.sh [--env prod]` creates the deployer
   once per environment. See section 8 of [deploy/gcp/README.md](deploy/gcp/README.md).
+
+## Observability
+
+The backend is instrumented with OpenTelemetry: HTTP requests are traced and
+exported over OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (SQL queries are not
+traced yet: the SQLAlchemy instrumentation does not support SQLAlchemy 2.1). Every
+span carries `service.name`, `deployment.environment.name` (`APP_ENV`) and
+`service.version` (`APP_VERSION`, the image tag, so a promoted image keeps its
+version). Details are in [backend/README.md](backend/README.md#telemetry-opentelemetry).
+
+[`observability/`](observability/README.md) is a separate Docker Compose project
+(independent of the app stack) with an OpenTelemetry Collector that routes traces to
+Tempo, metrics to Prometheus and logs to Loki, plus Grafana to explore them:
+
+```sh
+cd observability && docker compose up -d    # Grafana: http://localhost:3000 (admin / admin)
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 APP_ENV=local make run
+```
+
+Only traces are produced so far; the metrics and logs pipelines are ready for later.
+The dev and production services export nothing until `OTEL_EXPORTER_OTLP_ENDPOINT`
+is set in `deploy/gcp/config*.env`.
 
 ## Local development (without Docker)
 

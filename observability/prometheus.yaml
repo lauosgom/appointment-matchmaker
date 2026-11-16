@@ -1,0 +1,9 @@
+# Metrics arrive from the Collector by remote write (enabled with
+# --web.enable-remote-write-receiver). Prometheus also scrapes itself.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
