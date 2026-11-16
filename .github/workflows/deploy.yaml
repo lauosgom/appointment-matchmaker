@@ -1,8 +1,9 @@
 name: Deploy
 
-# Reusable: deploys the current checkout to one environment (dev or production).
+# Reusable: deploys an image that already exists in a registry; it never builds.
 # Each GitHub Environment holds its own GCP_* variables, so the same steps deploy
-# to independent infrastructure. Called by ci.yaml (dev) and deploy-prod.yaml.
+# to independent infrastructure. Called by ci.yaml (dev, with the image its build
+# job just pushed) and deploy-prod.yaml (production, promoting the image dev runs).
 on:
   workflow_call:
     inputs:
@@ -10,6 +11,18 @@ on:
         description: GitHub Environment to deploy to (dev or production)
         required: true
         type: string
+      image_tag:
+        description: Tag (YYYYMMDD-HHMMSS-shortsha) of the image in this environment's registry
+        required: false
+        type: string
+        default: ""
+      promote_from_source:
+        description: >-
+          Instead of image_tag, copy the image the source service (GitHub variable
+          GCP_SOURCE_SERVICE, i.e. dev) is serving into this environment's registry
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +43,9 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       SERVICE: ${{ vars.GCP_SERVICE }}
-      TAG: ci-${{ github.run_id }}
+      REVISION_TAG: ci-${{ github.run_id }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      SOURCE_SERVICE: ${{ vars.GCP_SOURCE_SERVICE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,13 +58,41 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Build and push the image
+      - name: Check which image to deploy
+        env:
+          PROMOTE: ${{ inputs.promote_from_source }}
         run: |
-          IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$SERVICE/app:$(git rev-parse --short=12 HEAD)"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          if [ "$PROMOTE" = true ] && [ -z "$IMAGE_TAG" ] && [ -n "$SOURCE_SERVICE" ]; then exit 0; fi
+          if [ "$PROMOTE" != true ] && [ -n "$IMAGE_TAG" ]; then exit 0; fi
+          echo "Give either image_tag, or promote_from_source with GCP_SOURCE_SERVICE set." >&2
+          exit 1
+
+      # Production never builds: it takes the exact image dev is serving, so what
+      # was tested and seen running in dev is what goes live. The image is copied
+      # into production's own registry (registry to registry, same digest) so
+      # production does not depend on dev's repository, which prunes old images.
+      - name: Copy the image dev is serving into this registry
+        if: inputs.promote_from_source
+        run: |
+          # The revision that has the traffic, not merely the newest one: a dev
+          # deploy that failed its health check leaves a newer revision with none.
+          REVISION="$(gcloud run services describe "$SOURCE_SERVICE" --project="$PROJECT_ID" --region="$REGION" \
+            --format=json | python3 -c "import json,sys; t=[x for x in json.load(sys.stdin)['status']['traffic'] if x.get('percent')]; print(max(t, key=lambda x: x['percent'])['revisionName'])")"
+          SRC_IMAGE="$(gcloud run revisions describe "$REVISION" --project="$PROJECT_ID" --region="$REGION" \
+            --format='value(spec.containers[0].image)')"
+          SRC_IMAGE="${SRC_IMAGE%%@*}"
+          IMAGE_TAG="${SRC_IMAGE##*:}"
+          echo "$SOURCE_SERVICE serves $SRC_IMAGE (revision $REVISION)"
+          if ! [[ "$IMAGE_TAG" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-f]{7}$ ]]; then
+            echo "Tag '$IMAGE_TAG' is not YYYYMMDD-HHMMSS-shortsha: not a CI-built image, refusing to promote it." >&2
+            exit 1
+          fi
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-          docker build --platform linux/amd64 -t "$IMAGE" .
-          docker push "$IMAGE"
+          docker buildx imagetools create --tag "$REGION-docker.pkg.dev/$PROJECT_ID/$SERVICE/app:$IMAGE_TAG" "$SRC_IMAGE"
+
+      - name: Resolve the image to deploy
+        run: echo "IMAGE=$REGION-docker.pkg.dev/$PROJECT_ID/$SERVICE/app:$IMAGE_TAG" >> "$GITHUB_ENV"
 
       # Only the image changes: the service's settings, secrets and access stay as
       # deploy.sh set them. --no-traffic keeps users on the current revision until
@@ -57,7 +100,7 @@ jobs:
       - name: Deploy the new revision without traffic
         run: |
           gcloud run deploy "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
-            --image="$IMAGE" --no-traffic --tag="$TAG" --quiet
+            --image="$IMAGE" --no-traffic --tag="$REVISION_TAG" --quiet
           URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
             --format=json | python3 -c "import json,sys; print(next(t['url'] for t in json.load(sys.stdin)['status']['traffic'] if t.get('tag')=='$TAG'))")"
           echo "CANDIDATE_URL=$URL" >> "$GITHUB_ENV"
@@ -79,4 +122,4 @@ jobs:
         if: always()
         run: |
           gcloud run services update-traffic "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
-            --remove-tags="$TAG" --quiet || true
+            --remove-tags="$REVISION_TAG" --quiet || true

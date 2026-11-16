@@ -18,6 +18,11 @@
 #       roles/artifactregistry.writer  on the app's image repository only
 #       roles/run.developer            on the app's Cloud Run service only
 #       roles/iam.serviceAccountUser   on the app's runtime service account only
+#   - if the config sets PROMOTE_FROM_SERVICE (production: the dev service), two
+#     read-only permissions on that service, so the deploy can find the image dev
+#     serves and copy it into this environment's repository:
+#       roles/artifactregistry.reader  on its image repository only
+#       roles/run.viewer               on its Cloud Run service only
 #
 # It gets NO access to secrets, to IAM policies, to other services or to the
 # project as a whole. It can't create the service or change who may call it:
@@ -88,6 +93,15 @@ g run services add-iam-policy-binding "$SERVICE" --region="$REGION" \
 g iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
   --member="$MEMBER" --role=roles/iam.serviceAccountUser >/dev/null
 
+SOURCE_SERVICE="${PROMOTE_FROM_SERVICE:-}"
+if [[ -n "$SOURCE_SERVICE" ]]; then
+  step "Letting the deployer read the image dev serves ($SOURCE_SERVICE)"
+  g artifacts repositories add-iam-policy-binding "$SOURCE_SERVICE" --location="$REGION" \
+    --member="$MEMBER" --role=roles/artifactregistry.reader >/dev/null
+  g run services add-iam-policy-binding "$SOURCE_SERVICE" --region="$REGION" \
+    --member="$MEMBER" --role=roles/run.viewer >/dev/null
+fi
+
 if [[ -n "${GITHUB_ENVIRONMENT:-}" ]]; then
   step "Done. Add these as variables of the GitHub Environment '$GITHUB_ENVIRONMENT' (Settings → Environments → $GITHUB_ENVIRONMENT → Environment variables):"
 else
@@ -100,3 +114,4 @@ cat <<OUT
   GCP_WORKLOAD_IDENTITY_PROVIDER projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL/providers/$PROVIDER
   GCP_DEPLOYER_SERVICE_ACCOUNT   $DEPLOYER
 OUT
+if [[ -n "$SOURCE_SERVICE" ]]; then echo "  GCP_SOURCE_SERVICE             $SOURCE_SERVICE"; fi

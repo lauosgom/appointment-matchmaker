@@ -1,6 +1,7 @@
 name: Deploy to production
 
 # Manual: run it from the Actions tab (Run workflow) once dev looks good.
+# Nothing is built here: it promotes the image that dev is currently serving.
 # The "production" GitHub Environment should require an approval, and the
 # production GCP deployer only trusts jobs that run in that environment.
 on:
@@ -17,6 +18,7 @@ jobs:
     uses: ./.github/workflows/deploy.yaml
     with:
       environment: production
+      promote_from_source: true
     permissions:
       contents: read
       id-token: write

@@ -111,14 +111,54 @@ jobs:
         if: always()
         run: docker compose $COMPOSE_FILES down -v --remove-orphans || true
 
+  # Build once: the image is tagged YYYYMMDD-HHMMSS-shortsha and pushed to the dev
+  # registry (Artifact Registry). Deploying, and later promoting to production,
+  # only ever pull this image.
+  build-image:
+    name: Build and push the image
+    needs: [stack-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute the image tag
+        id: tag
+        run: echo "image_tag=$(date -u +%Y%m%d-%H%M%S)-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Google Cloud (OIDC, no stored keys)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_SERVICE }}/app:${{ steps.tag.outputs.image_tag }}
+        run: |
+          gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+          docker build --platform linux/amd64 -t "$IMAGE" .
+          docker push "$IMAGE"
+
   deploy-dev:
     name: Deploy to dev
-    needs: [stack-tests]
+    needs: [build-image]
     # Only main deploys. The GCP trust policy enforces the same rule.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy.yaml
     with:
       environment: dev
+      image_tag: ${{ needs.build-image.outputs.image_tag }}
     permissions:
       contents: read
       id-token: write

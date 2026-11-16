@@ -372,16 +372,23 @@ push / pull request
   └── frontend tests ─┴─► Compose stack: build, integration tests on PostgreSQL, Playwright e2e
                               │  only on push to main
                               ▼
-                          Deploy to dev ──► (manually, with approval) Deploy to production
+                          Build image ──► Deploy to dev ──► (manually, with approval) Promote to production
+                          (push to registry)  (pull + serve)   (copy dev's image, pull + serve)
 ```
 
 - **Tests:** backend and frontend tests run in parallel. When both pass, the job
   builds the Docker Compose stack, runs the backend integration tests against its
   PostgreSQL, then runs the end-to-end suite.
+- **Build:** one job builds the image once and pushes it to the dev Artifact
+  Registry repository, tagged `YYYYMMDD-HHMMSS-shortsha` (UTC, e.g.
+  `20260818-163457-83242da`).
 - **Deploy:** one reusable workflow ([`deploy.yaml`](.github/workflows/deploy.yaml))
-  builds the image, deploys it as a new revision with **no traffic**, checks
-  `/api/health` on that revision, and only then sends it traffic and checks the live
-  URL again. A failed check fails the job and users stay on the previous revision.
+  never builds: it pulls an existing image, deploys it as a new revision with **no
+  traffic**, checks `/api/health` on that revision, and only then sends it traffic
+  and checks the live URL again. A failed check fails the job and users stay on the
+  previous revision. Dev deploys the image the build job just pushed. Production
+  (manual) deploys the image dev is currently serving: it copies it into
+  production's own repository, with the same tag, and deploys that.
 - **No stored keys:** GitHub logs in to Google Cloud with its OIDC token (workload
   identity federation). Each environment has its own deployer service account with
   only three permissions, each on one resource of that environment: push to its

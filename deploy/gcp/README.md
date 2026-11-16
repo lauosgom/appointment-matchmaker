@@ -174,10 +174,14 @@ The scripts take `--env`: `./deploy/gcp/deploy.sh --env prod` and
 ### GitHub Actions
 
 [`.github/workflows/ci.yaml`](../../.github/workflows/ci.yaml) runs the tests and,
-on `main`, deploys to **dev** through the reusable
-[`deploy.yaml`](../../.github/workflows/deploy.yaml).
+on `main`, builds the image once (tagged `YYYYMMDD-HHMMSS-shortsha`, UTC, and
+pushed to the dev repository) and deploys it to **dev** through the reusable
+[`deploy.yaml`](../../.github/workflows/deploy.yaml), which only pulls and serves.
 [`deploy-prod.yaml`](../../.github/workflows/deploy-prod.yaml) deploys to
 **production**: run it by hand from the Actions tab (Run workflow, branch `main`).
+It does not build: it takes the image the dev service is serving right now, copies
+it (same tag and digest) into production's repository and deploys it. It refuses an
+image whose tag does not match the pattern, such as a `-dirty` local build.
 Both log in to Google Cloud with GitHub's OIDC token (workload identity
 federation), so no key or password is stored in GitHub.
 
@@ -189,7 +193,11 @@ project admin logged in to `gcloud`:
 ./deploy/gcp/setup-github-oidc.sh --env prod  # production
 ```
 
-Each prints five values: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_SERVICE`,
+Production's config sets `PROMOTE_FROM_SERVICE` (the dev service), so its run also
+gives the production deployer read-only access to dev's image repository and
+Cloud Run service. Re-run it once for production if it was set up earlier.
+
+Each prints five values (six for production, which adds `GCP_SOURCE_SERVICE`): `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_SERVICE`,
 `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOYER_SERVICE_ACCOUNT`. None is secret.
 Add them as **variables of the GitHub Environment** (Settings → Environments). For
 `dev` the repository variables you already set keep working, because an
@@ -199,13 +207,15 @@ production deploy needs an approval.
 
 **What each pipeline can do.** It acts as its own deployer service account
 (`appointment-matchmaker-deploy` for dev, `am-prod-deploy` for production), which
-has only this, each on one resource of its own environment:
+has only this, each on one resource:
 
 | Permission | On | Why |
 |---|---|---|
 | `roles/artifactregistry.writer` | the environment's image repository | push the image |
 | `roles/run.developer` | the environment's Cloud Run service | roll out a new revision |
 | `roles/iam.serviceAccountUser` | the environment's runtime service account | a revision runs as that account |
+| `roles/artifactregistry.reader` (production only) | dev's image repository | copy the image dev serves |
+| `roles/run.viewer` (production only) | dev's Cloud Run service | find which image dev serves |
 
 Each environment has its own pool, because a grant matches every token of a pool.
 The accounts can't read secrets, change IAM policies, create or delete services,
@@ -213,7 +223,7 @@ or touch the other environment. Only `main` of this repository can use them, and
 the production one also requires the job to run in the `production` GitHub
 Environment: pull requests, forks and the dev pipeline can't deploy to production.
 
-**How it deploys.** It builds and pushes the image, deploys it as a new revision
+**How it deploys.** It pulls the image (built earlier by the build job, or promoted from dev), deploys it as a new revision
 with no traffic, and calls `/api/health` on that revision's own tagged URL. Only if
 that answers `200 {"status":"ok"}` (the app is up and reaches its database) does it
 send traffic to the revision, and then it checks `/api/health` on the live URL

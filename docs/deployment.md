@@ -9,9 +9,10 @@ secrets, deployer and database):
 
 - `./deploy/gcp/deploy.sh` (dev) or `./deploy/gcp/deploy.sh --env prod` builds the
   Docker image, pushes it and deploys it. Running it again redeploys new code.
-- Pushes to `main` deploy to **dev** automatically after the tests pass. Production
-  is deployed by running the `Deploy to production` workflow by hand, with an
-  approval. Both use a GitHub OIDC role of their own with minimal permissions, and
+- Pushes to `main` build the image once (tag `YYYYMMDD-HHMMSS-shortsha`), push it to
+  Artifact Registry and deploy it to **dev** automatically after the tests pass.
+  Production is deployed by running the `Deploy to production` workflow by hand, with
+  an approval: it deploys the image dev is currently serving, without rebuilding. Both use a GitHub OIDC role of their own with minimal permissions, and
   check `/api/health` before taking traffic (see section 8 of the deploy README).
 - Secrets live in Secret Manager. `deploy/gcp/config*.env` and `.env*local` are
   never committed.

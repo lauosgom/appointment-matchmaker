@@ -46,8 +46,10 @@ SA="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 SECRET_DB="$SERVICE-database-url"
 SECRET_SMTP="$SERVICE-smtp-password"
 REGISTRY="$REGION-docker.pkg.dev"
-TAG="$(git -C "$ROOT" rev-parse --short HEAD)"
-git -C "$ROOT" diff --quiet HEAD || TAG="$TAG-dirty-$(date +%Y%m%d%H%M%S)"
+# Same YYYYMMDD-HHMMSS-shortsha tag as CI. A "-dirty" suffix marks uncommitted
+# changes, and makes the production promotion refuse the image.
+TAG="$(date -u +%Y%m%d-%H%M%S)-$(git -C "$ROOT" rev-parse --short=7 HEAD)"
+git -C "$ROOT" diff --quiet HEAD || TAG="$TAG-dirty"
 IMAGE="$REGISTRY/$PROJECT_ID/$SERVICE/app:$TAG"
 
 g() { gcloud --project="$PROJECT_ID" --quiet "$@"; }
