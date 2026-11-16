@@ -7,6 +7,8 @@ A web app for matching appointments with specialists. It has two parts:
 
 The API contract is in [openapi.yaml](openapi.yaml).
 
+**Live app:** https://appointment-matchmaker-42649326635.us-east1.run.app/ (Google Cloud Run; see [deploy/gcp/README.md](deploy/gcp/README.md)). The first visit after a quiet period takes a few seconds while it wakes up.
+
 ## How the application works
 
 Counselors at a support line use the app to book follow-up appointments with
