@@ -53,3 +53,30 @@ labels (`deployment_environment_name`, `service_version`, `service_name`).
 
 The backend produces traces and metrics; the logs pipeline is ready for when it
 emits logs.
+
+## Grafana Cloud (dev and production)
+
+The deployed services send their telemetry straight to Grafana Cloud's OTLP
+gateway; this Compose stack is only for local work. Grafana Cloud has a free plan
+with monthly usage limits (check the current limits on its pricing page).
+
+1. Create a free Grafana Cloud stack. On its **OpenTelemetry** tile, create a token
+   (it needs permission to publish metrics and traces) and copy the OTLP endpoint
+   (`https://otlp-gateway-<zone>.grafana.net/otlp`) and the
+   `Authorization=Basic <token>` header.
+2. Put the endpoint in `deploy/gcp/config.env` (dev) and `deploy/gcp/config.prod.env`
+   (production) as `OTEL_EXPORTER_OTLP_ENDPOINT`.
+3. Run `./deploy/gcp/deploy.sh` and `./deploy/gcp/deploy.sh --env prod`. Each asks for
+   the header once, keeps it in Secret Manager and hands it to the service as
+   `OTEL_EXPORTER_OTLP_HEADERS`. Later CI deploys only change the image, so the
+   setting stays.
+4. In Grafana Cloud, import `grafana/dashboards/appointment-matchmaker.json`
+   (Dashboards → New → Import) and pick its Prometheus data source.
+
+Check after the first traffic: Grafana Cloud only turns some resource attributes
+into metric labels by default (`service.name` becomes `job`; `service.version` is
+normally on the list; `deployment.environment.name` may not be). The others stay
+in the `target_info` series. If the dashboard's **Environment** filter is empty, add
+`deployment.environment.name` to the promoted resource attributes in your stack's
+OTLP settings, or filter by `job` instead: dev and production already have different
+service names. The dashboard has not been tried against Grafana Cloud yet.

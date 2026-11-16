@@ -96,7 +96,9 @@ The first run:
 2. Creates the image repository (`appointment-matchmaker`) and the service account
    (`appointment-matchmaker-run`).
 3. Stores the **Neon connection string** (from `.env.local`) and, if email is on,
-   the **Brevo SMTP key** (it asks you for this) in Secret Manager.
+   the **Brevo SMTP key** (it asks you for this) in Secret Manager. If
+   `OTEL_EXPORTER_OTLP_ENDPOINT` is set, it also asks for the Grafana Cloud OTLP
+   header and stores it there (see [observability/README.md](../../observability/README.md#grafana-cloud-dev-and-production)).
 4. Builds the image, pushes it and deploys the Cloud Run service.
 5. Checks that the app answers.
 
@@ -249,6 +251,7 @@ gcloud run services delete $S --project=$P --region=$R
 gcloud artifacts repositories delete $S --project=$P --location=$R
 gcloud secrets delete $S-database-url --project=$P
 gcloud secrets delete $S-smtp-password --project=$P
+gcloud secrets delete $S-otlp-headers --project=$P   # only if telemetry was set up
 gcloud iam service-accounts delete $S-run@$P.iam.gserviceaccount.com --project=$P
 ```
 

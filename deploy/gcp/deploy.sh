@@ -45,6 +45,7 @@ SA_NAME="${RUNTIME_SA_NAME:-${SERVICE:0:26}-run}"   # service account IDs are at
 SA="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 SECRET_DB="$SERVICE-database-url"
 SECRET_SMTP="$SERVICE-smtp-password"
+SECRET_OTEL="$SERVICE-otlp-headers"
 REGISTRY="$REGION-docker.pkg.dev"
 # Same YYYYMMDD-HHMMSS-shortsha tag as CI. A "-dirty" suffix marks uncommitted
 # changes, and makes the production promotion refuse the image.
@@ -85,7 +86,7 @@ ensure_secret() { # name, prompt, [value: used instead of asking]
     echo "Secret $name already exists (run with --update-secrets to replace it)."
   else
     if [[ -n "$value" ]]; then
-      echo "$prompt: taken from $NEON_ENV_FILE"
+      echo "$prompt: provided"
     else
       read -r -s -p "$prompt: " value; echo
     fi
@@ -112,6 +113,16 @@ fi
 step "Secrets"
 ensure_secret "$SECRET_DB" "Neon connection string (postgresql://…)" "$NEON_URL"
 if [[ "$EMAIL" == true ]]; then ensure_secret "$SECRET_SMTP" "Brevo SMTP key"; fi
+if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
+  # Grafana Cloud: the "Authorization=Basic <token>" value of its OpenTelemetry tile.
+  # Exporters need the space as %20.
+  OTEL_HEADERS=""
+  if ! g secrets describe "$SECRET_OTEL" >/dev/null 2>&1 || [[ "$UPDATE_SECRETS" == true ]]; then
+    read -r -s -p "OTLP headers (Authorization=Basic ...): " OTEL_HEADERS; echo
+    OTEL_HEADERS="${OTEL_HEADERS// /%20}"
+  fi
+  ensure_secret "$SECRET_OTEL" "OTLP headers" "$OTEL_HEADERS"
+fi
 
 step "Building and pushing $IMAGE"
 gcloud auth configure-docker "$REGISTRY" --quiet >/dev/null
@@ -125,7 +136,10 @@ fi
 
 # Same names as the GitHub Environments the CI deploys use (dev, production).
 ENV_VARS=("SEED_DEMO_DATA=false" "APP_BASE_URL=$APP_BASE_URL" "APP_ENV=$([[ "$ENV_NAME" == prod ]] && echo production || echo "${ENV_NAME:-dev}")")
-if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then ENV_VARS+=("OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"); fi
+if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
+  ENV_VARS+=("OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT")
+  SECRETS_ARG_EXTRA=",OTEL_EXPORTER_OTLP_HEADERS=$SECRET_OTEL:latest"
+fi
 SECRETS_ARG="DATABASE_URL=$SECRET_DB:latest"
 if [[ "$EMAIL" == true ]]; then
   ENV_VARS+=("MAIL_SEND_INLINE=true" "SMTP_HOST=$SMTP_HOST" "SMTP_PORT=$SMTP_PORT"
@@ -135,6 +149,7 @@ else
   step "No SMTP_USERNAME: deploying WITHOUT email; the reset link is shown on the recovery page"
   ENV_VARS+=("RESET_LINK_IN_RESPONSE=true")
 fi
+SECRETS_ARG+="${SECRETS_ARG_EXTRA:-}"
 # "^|^" makes "|" the separator: values contain spaces, commas and "@".
 ENV_ARG="^|^$(IFS='|'; echo "${ENV_VARS[*]}")"
 
