@@ -7,7 +7,7 @@ A web app for matching appointments with specialists. It has two parts:
 
 The API contract is in [openapi.yaml](openapi.yaml).
 
-**Live app:** https://appointment-matchmaker-42649326635.us-east1.run.app/ (Google Cloud Run; see [deploy/gcp/README.md](deploy/gcp/README.md)). The first visit after a quiet period takes a few seconds while it wakes up.
+**Live app (production):** https://appointment-matchmaker-prod-42649326635.us-east1.run.app/ (Google Cloud Run; see [Deployment](#deployment)). Dev: https://appointment-matchmaker-42649326635.us-east1.run.app/. The first visit after a quiet period takes a few seconds while it wakes up.
 
 ## The problem
 
@@ -118,6 +118,7 @@ everything and can filter by specialist and status.
 ```
 Browser ──► FastAPI (one container, port 8000)
               ├── /api/*   REST API (openapi.yaml), bearer-token auth
+              ├── /api/health  public check that the app reaches its database
               ├── /docs    interactive API docs
               └── /*       built frontend (single-page app)
                      │
@@ -338,26 +339,58 @@ make test-e2e   # Playwright end-to-end tests against the Docker Compose stack
 | Level | What | Where |
 |---|---|---|
 | Unit | Configuration, email building, the admin CLI, dates and time zones, the mock's business rules | `backend/tests/`, `frontend/src/` |
-| Integration | The real API over HTTP with a real database: auth, users, specialists, slots, availability, assignments, corrections, settings, persistence, constraints (112 backend tests). Also runnable against PostgreSQL with `make test-backend-pg` | `backend/tests/` |
+| Integration | The real API over HTTP with a real database: auth, users, specialists, slots, availability, assignments, corrections, settings, persistence, constraints, health endpoint (114 backend tests). Also runnable against PostgreSQL with `make test-backend-pg` | `backend/tests/` |
 | End to end | The Docker image plus PostgreSQL in a browser: workflow, search, business rules, permissions, bad data, presentation, technical checks | [`e2e/`](e2e/README.md) |
 
-The frontend has 20 tests (Vitest). See [docs/testing.md](docs/testing.md).
+The frontend has 20 tests (Vitest). See [docs/testing.md](docs/testing.md). All of
+these also run in CI on every push and pull request (see [CI/CD](#cicd)).
 
 ## Deployment
 
 The app runs on Google Cloud Run, with a Neon PostgreSQL database, in two
-independent environments:
+independent environments. Each has its own Cloud Run service, image repository,
+service accounts, secrets, deployer identity and database.
 
-- **Production:** **https://appointment-matchmaker-prod-42649326635.us-east1.run.app/**,
-  deployed by hand with the `Deploy to production` workflow, which needs an approval.
-- **Dev:** https://appointment-matchmaker-42649326635.us-east1.run.app/, deployed
-  automatically on every push to `main` once the tests pass.
+| | Dev | Production |
+|---|---|---|
+| URL | https://appointment-matchmaker-42649326635.us-east1.run.app/ | https://appointment-matchmaker-prod-42649326635.us-east1.run.app/ |
+| Deployed | automatically on every push to `main`, after the tests pass | by hand, with an approval |
+| Commands | `./deploy/gcp/deploy.sh` | `./deploy/gcp/deploy.sh --env prod` |
 
-Each deploy is checked with `/api/health` before it takes traffic. The first visit
-after a quiet period takes a few seconds while it wakes up. Neither environment has
-demo accounts. To deploy your own copy, run `./deploy/gcp/deploy.sh` (it builds the
-image, pushes it and deploys it). The full steps, the pipeline, the cost (free tier)
-and how to remove it are in [deploy/gcp/README.md](deploy/gcp/README.md).
+Neither has demo accounts. The first visit after a quiet period takes a few seconds
+while it wakes up. To deploy your own copy, run `./deploy/gcp/deploy.sh` (it builds
+the image, pushes it and deploys it). The full steps, the cost (free tier) and how
+to remove it are in [deploy/gcp/README.md](deploy/gcp/README.md).
+
+### CI/CD
+
+[`.github/workflows/`](.github/workflows) holds the pipeline:
+
+```
+push / pull request
+  ├── backend tests ──┐   (in parallel)
+  └── frontend tests ─┴─► Compose stack: build, integration tests on PostgreSQL, Playwright e2e
+                              │  only on push to main
+                              ▼
+                          Deploy to dev ──► (manually, with approval) Deploy to production
+```
+
+- **Tests:** backend and frontend tests run in parallel. When both pass, the job
+  builds the Docker Compose stack, runs the backend integration tests against its
+  PostgreSQL, then runs the end-to-end suite.
+- **Deploy:** one reusable workflow ([`deploy.yaml`](.github/workflows/deploy.yaml))
+  builds the image, deploys it as a new revision with **no traffic**, checks
+  `/api/health` on that revision, and only then sends it traffic and checks the live
+  URL again. A failed check fails the job and users stay on the previous revision.
+- **No stored keys:** GitHub logs in to Google Cloud with its OIDC token (workload
+  identity federation). Each environment has its own deployer service account with
+  only three permissions, each on one resource of that environment: push to its
+  image repository, roll out revisions of its service, and act as its runtime
+  service account. It can't read secrets, change IAM or create services. Only `main`
+  can use it, and the production one only trusts jobs in the `production` GitHub
+  Environment, so the dev pipeline, pull requests and forks can't deploy to production.
+- **Setup:** `./deploy/gcp/setup-github-oidc.sh [--env prod]` creates the deployer
+  once per environment. See section 8 of [deploy/gcp/README.md](deploy/gcp/README.md).
 
 ## Local development (without Docker)
 
