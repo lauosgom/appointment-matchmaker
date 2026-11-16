@@ -9,6 +9,35 @@ The API contract is in [openapi.yaml](openapi.yaml).
 
 **Live app:** https://appointment-matchmaker-42649326635.us-east1.run.app/ (Google Cloud Run; see [deploy/gcp/README.md](deploy/gcp/README.md)). The first visit after a quiet period takes a few seconds while it wakes up.
 
+## The problem
+
+A support line's counselors take calls from people who need a follow-up with a
+specialist (a psychologist, a lawyer, and so on). Matching each caller with a free
+slot used to be manual, which causes double bookings, lost bookings and no record of
+who booked what. This app replaces that with one shared schedule.
+
+**What the system does:**
+
+- Admins load each specialist's availability as time slots.
+- Counselors search for open slots, hold one for a caller, and confirm it to get a
+  unique appointment code.
+- Admins manage users, specialists, departments and areas, cancel confirmed
+  appointments and review correction requests.
+- Specialists see their own confirmed appointments.
+
+**Expected behavior:**
+
+- A slot can never be booked twice, even when two counselors try at the same time.
+- A held slot is either confirmed (it gets a code) or discarded (it frees up).
+- Counselors can't change a confirmed appointment. They send a correction request
+  to an admin.
+- Each role sees only what it is allowed to do.
+- The reason for a call is never stored.
+- Times are shown in Colombia time (UTC−5), and the interface is in Spanish.
+
+The details are in the sections below and in the full spec
+([docs/spec.md](docs/spec.md)).
+
 ## How the application works
 
 Counselors at a support line use the app to book follow-up appointments with
@@ -107,11 +136,39 @@ Browser ──► FastAPI (one container, port 8000)
   them along with the API. Any page URL (for example `/agenda`) returns the app,
   which then shows the right screen.
 
+## Quick start
+
+```sh
+docker compose up -d --build   # app + PostgreSQL + Mailpit: http://localhost:8000
+make test                      # all unit and integration tests
+```
+
+Demo logins (local only): `admin` / `admin123`, `orientador` / `orientador123`,
+`especialista` / `especialista123`.
+
+## Working with AI agents (context management)
+
+This project was built with an AI coding agent (Claude Code) working with one
+developer. There is no agent team, so there are no roles to split up.
+
+The agent's context lives in the repo:
+
+- [AGENTS.md](AGENTS.md) is the entry point. It gives the rules (use `uv`, commit
+  often, run the tests) and links to the modular docs below.
+- [docs/process.md](docs/process.md): workflow and conventions.
+- [docs/spec.md](docs/spec.md) and [openapi.yaml](openapi.yaml): what to build.
+- [docs/testing.md](docs/testing.md): how it is tested.
+- [docs/deployment.md](docs/deployment.md): how it is deployed.
+- [frontend/AGENTS.md](frontend/AGENTS.md): frontend rules (all API calls go
+  through one services layer).
+
 ## Running with Docker Compose
 
-The quickest way to run the whole stack is `docker-compose.yaml`. It starts two
-services: `db` (PostgreSQL 16) and `app` (built from the `Dockerfile`). The app
-waits until the database is healthy before it starts.
+The whole system starts with one command, `docker compose up -d --build`, with no
+manual steps. `docker-compose.yaml` starts three services: `db` (PostgreSQL 16),
+`app` (built from the multi-stage `Dockerfile`, which builds the frontend and runs
+the backend) and `mailpit` (catches outgoing email). The app waits until the
+database is healthy before it starts, creates its tables, and loads demo data.
 
 ```sh
 docker compose up -d --build   # build and start: http://localhost:8000
@@ -271,9 +328,31 @@ docker run -d --name appointment-matchmaker -p 8000:8000 --network appointment-m
 Tables are created on first start. With Postgres, the data lives in the
 `appointment-matchmaker` volume, so the `/data` volume isn't needed.
 
-## Deploying
+## Testing
 
-To deploy to Google Cloud Run with a free Neon database and free Brevo email, see
+```sh
+make test       # backend + frontend unit and integration tests (one command)
+make test-e2e   # Playwright end-to-end tests against the Docker Compose stack
+```
+
+| Level | What | Where |
+|---|---|---|
+| Unit | Configuration, email building, the admin CLI, dates and time zones, the mock's business rules | `backend/tests/`, `frontend/src/` |
+| Integration | The real API over HTTP with a real database: auth, users, specialists, slots, availability, assignments, corrections, settings, persistence, constraints (112 backend tests). Also runnable against PostgreSQL with `make test-backend-pg` | `backend/tests/` |
+| End to end | The Docker image plus PostgreSQL in a browser: workflow, search, business rules, permissions, bad data, presentation, technical checks | [`e2e/`](e2e/README.md) |
+
+The frontend has 20 tests (Vitest). See [docs/testing.md](docs/testing.md).
+
+## Deployment
+
+The app is deployed on Google Cloud Run, with a Neon PostgreSQL database:
+
+**https://appointment-matchmaker-42649326635.us-east1.run.app/**
+
+The first visit after a quiet period takes a few seconds while it wakes up.
+Production has no demo accounts. To deploy your own copy, run
+`./deploy/gcp/deploy.sh` (it builds the image, pushes it and deploys it). The full
+steps, the cost (free tier) and how to remove it are in
 [deploy/gcp/README.md](deploy/gcp/README.md).
 
 ## Local development (without Docker)
