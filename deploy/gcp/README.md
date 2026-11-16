@@ -55,7 +55,15 @@ Keep `.env.local` private: it gives full access to the data.
 `neon init` also adds `neon.ts`, `package.json` and `.neon` for Neon's own tooling.
 The Python app doesn't use them.
 
-## 3. Email: Brevo
+## 3. Email: Brevo (optional, skipped for now)
+
+> **Deploying without email.** Leave `SMTP_USERNAME` empty in `config.env` and skip
+> this step. `deploy.sh` then sets `RESET_LINK_IN_RESPONSE=true`: no emails are sent,
+> and the password-recovery page shows the reset link directly. **This is insecure:**
+> anyone who knows an account's email (admins included) can reset its password.
+> Until email is set up, create users with known emails only, or don't share the
+> URL. To switch to email later, do the steps below, fill in `SMTP_USERNAME` and
+> `MAIL_FROM`, and run `./deploy/gcp/deploy.sh`. That replaces the flag.
 
 1. Sign up at https://www.brevo.com. The free plan allows 300 emails a day.
 2. Go to **Senders, domains & dedicated IPs → Senders**. Add the address the
@@ -72,8 +80,8 @@ The Python app doesn't use them.
 cp deploy/gcp/config.env.example deploy/gcp/config.env
 ```
 
-Fill in `PROJECT_ID`, `SMTP_USERNAME` (the Brevo SMTP login) and `MAIL_FROM` (the
-verified sender). `config.env` is in `.gitignore`, so it isn't committed. It holds no
+Fill in `PROJECT_ID` (and, if you set up email, `SMTP_USERNAME` (the Brevo SMTP login) and `MAIL_FROM` (the
+verified sender)). `config.env` is in `.gitignore`, so it isn't committed. It holds no
 passwords: the script asks for those.
 
 ## 5. Deploy
@@ -87,8 +95,8 @@ The first run:
 1. Enables the Cloud Run, Artifact Registry and Secret Manager APIs.
 2. Creates the image repository (`appointment-matchmaker`) and the service account
    (`appointment-matchmaker-run`).
-3. Stores the **Neon connection string** (from `.env.local`) and the **Brevo SMTP
-   key** (it asks you for this) in Secret Manager.
+3. Stores the **Neon connection string** (from `.env.local`) and, if email is on,
+   the **Brevo SMTP key** (it asks you for this) in Secret Manager.
 4. Builds the image, pushes it and deploys the Cloud Run service.
 5. Checks that the app answers.
 

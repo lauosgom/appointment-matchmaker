@@ -88,3 +88,13 @@ def mail_send_inline() -> bool:
     request-based billing), where a background send may never finish.
     """
     return _flag("MAIL_SEND_INLINE")
+
+
+def reset_link_in_response() -> bool:
+    """Return the password-reset token in the reset request's response (RESET_LINK_IN_RESPONSE).
+
+    INSECURE: anyone who knows an account's email can reset its password, admins
+    included. It exists only for deployments without an email service; no email
+    is sent while it is on. Off by default.
+    """
+    return _flag("RESET_LINK_IN_RESPONSE")

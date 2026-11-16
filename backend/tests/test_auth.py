@@ -178,3 +178,14 @@ def test_inline_mode_sends_before_answering_with_constant_timing(client, outbox,
     token = reset_token_from(outbox[0])
     r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "newpass123"})
     assert r.status_code == 204
+
+
+def test_reset_link_in_response_mode_returns_token_and_sends_no_email(client, outbox, monkeypatch):
+    monkeypatch.setenv("RESET_LINK_IN_RESPONSE", "true")
+    r = client.post("/api/auth/password-reset/request", json={"email": "admin@telefono.org"})
+    assert r.status_code == 200 and outbox == []
+    token = r.json()["demoToken"]
+    r = client.post("/api/auth/password-reset/confirm", json={"token": token, "newPassword": "newpass123"})
+    assert r.status_code == 204
+    r = client.post("/api/auth/password-reset/request", json={"email": "nadie@telefono.org"})
+    assert r.status_code == 200 and r.json() == {}

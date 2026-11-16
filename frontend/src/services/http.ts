@@ -91,8 +91,10 @@ export function createHttpServices({
         if (tokens.get()) void post<void>("/auth/logout").catch(() => undefined);
         tokens.set(null);
       },
-      // The server emails the link; it never returns the token.
-      requestPasswordReset: (email) => post<void>("/auth/password-reset/request", { email }),
+      // The server emails the link and answers 204, unless it runs without an email
+      // service (RESET_LINK_IN_RESPONSE), in which case it returns { demoToken }.
+      requestPasswordReset: (email) =>
+        post<{ demoToken?: string } | void>("/auth/password-reset/request", { email }),
       resetPassword: (token, newPassword) =>
         post<void>("/auth/password-reset/confirm", { token, newPassword }),
     },

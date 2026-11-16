@@ -23,8 +23,12 @@ esac
 source "$HERE/config.env"
 
 : "${PROJECT_ID:?Set PROJECT_ID in config.env}"
-: "${SMTP_USERNAME:?Set SMTP_USERNAME in config.env}"
-: "${MAIL_FROM:?Set MAIL_FROM in config.env}"
+SMTP_USERNAME="${SMTP_USERNAME:-}"
+MAIL_FROM="${MAIL_FROM:-}"
+# Without SMTP_USERNAME there is no email service: no emails are sent and the
+# password-recovery page shows the reset link itself (INSECURE, see README).
+EMAIL=true; [[ -n "$SMTP_USERNAME" ]] || EMAIL=false
+if [[ "$EMAIL" == true ]]; then : "${MAIL_FROM:?Set MAIL_FROM in config.env}"; fi
 REGION="${REGION:-us-east1}"
 SERVICE="${SERVICE:-appointment-matchmaker}"
 SMTP_HOST="${SMTP_HOST:-smtp-relay.brevo.com}"
@@ -99,7 +103,7 @@ fi
 
 step "Secrets"
 ensure_secret "$SECRET_DB" "Neon connection string (postgresql://…)" "$NEON_URL"
-ensure_secret "$SECRET_SMTP" "Brevo SMTP key"
+if [[ "$EMAIL" == true ]]; then ensure_secret "$SECRET_SMTP" "Brevo SMTP key"; fi
 
 step "Building and pushing $IMAGE"
 gcloud auth configure-docker "$REGISTRY" --quiet >/dev/null
@@ -111,16 +115,16 @@ if [[ -z "${APP_BASE_URL:-}" ]]; then
   APP_BASE_URL="https://$SERVICE-$(g projects describe "$PROJECT_ID" --format='value(projectNumber)').$REGION.run.app"
 fi
 
-ENV_VARS=(
-  "SEED_DEMO_DATA=false"
-  "MAIL_SEND_INLINE=true"
-  "SMTP_HOST=$SMTP_HOST"
-  "SMTP_PORT=$SMTP_PORT"
-  "SMTP_SECURITY=$SMTP_SECURITY"
-  "SMTP_USERNAME=$SMTP_USERNAME"
-  "MAIL_FROM=$MAIL_FROM"
-  "APP_BASE_URL=$APP_BASE_URL"
-)
+ENV_VARS=("SEED_DEMO_DATA=false" "APP_BASE_URL=$APP_BASE_URL")
+SECRETS_ARG="DATABASE_URL=$SECRET_DB:latest"
+if [[ "$EMAIL" == true ]]; then
+  ENV_VARS+=("MAIL_SEND_INLINE=true" "SMTP_HOST=$SMTP_HOST" "SMTP_PORT=$SMTP_PORT"
+             "SMTP_SECURITY=$SMTP_SECURITY" "SMTP_USERNAME=$SMTP_USERNAME" "MAIL_FROM=$MAIL_FROM")
+  SECRETS_ARG+=",SMTP_PASSWORD=$SECRET_SMTP:latest"
+else
+  step "No SMTP_USERNAME: deploying WITHOUT email; the reset link is shown on the recovery page"
+  ENV_VARS+=("RESET_LINK_IN_RESPONSE=true")
+fi
 # "^|^" makes "|" the separator: values contain spaces, commas and "@".
 ENV_ARG="^|^$(IFS='|'; echo "${ENV_VARS[*]}")"
 
@@ -138,7 +142,7 @@ g run deploy "$SERVICE" \
   --min-instances=0 --max-instances=2 --concurrency=40 --timeout=60 \
   --labels="$LABEL" \
   --set-env-vars="$ENV_ARG" \
-  --set-secrets="DATABASE_URL=$SECRET_DB:latest,SMTP_PASSWORD=$SECRET_SMTP:latest"
+  --set-secrets="$SECRETS_ARG"
 
 step "Checking the app answers"
 for _ in $(seq 1 30); do

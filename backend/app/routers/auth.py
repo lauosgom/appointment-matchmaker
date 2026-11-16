@@ -2,6 +2,7 @@ import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
 from .. import config, mailer, security
@@ -46,6 +47,11 @@ def request_password_reset(
     The answer is the same whether or not the email belongs to an account, and
     never contains the token: only the mailbox owner gets the link.
     """
+    if config.reset_link_in_response():
+        # No email service: hand the token to the requester (insecure, see config).
+        token = security.generate_token()
+        found = store.register_password_reset_token(str(body.email), token)
+        return JSONResponse({"demoToken": token} if found else {})
     started = time.monotonic()
     inline = config.mail_send_inline()
     token = security.generate_token()
