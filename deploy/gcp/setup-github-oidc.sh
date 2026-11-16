@@ -3,7 +3,12 @@
 # GitHub Actions deploy through OIDC, with no stored keys. See README.md.
 # Safe to re-run.
 #
-#   ./setup-github-oidc.sh [OWNER/REPO]     # default: taken from the git remote
+#   ./setup-github-oidc.sh [--env NAME] [OWNER/REPO]   # default repo: from the git remote
+#
+# --env NAME reads config.NAME.env instead of config.env, so each environment
+# gets its own service account, provider and permissions. If the config sets
+# GITHUB_ENVIRONMENT (e.g. production), the provider also requires the job to run
+# in that GitHub Environment, where you can require a manual approval.
 #
 # What it creates, and nothing else:
 #   - a service account, $SERVICE-deploy, that the workflow impersonates
@@ -21,8 +26,12 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
+ENV_NAME=""
+if [[ "${1:-}" == "--env" ]]; then ENV_NAME="${2:?--env needs a name, e.g. prod}"; shift 2; fi
+CONFIG="$HERE/config${ENV_NAME:+.$ENV_NAME}.env"
+[[ -f "$CONFIG" ]] || { echo "Missing $CONFIG" >&2; exit 1; }
 # shellcheck source=/dev/null
-source "$HERE/config.env"
+source "$CONFIG"
 : "${PROJECT_ID:?Set PROJECT_ID in config.env}"
 REGION="${REGION:-us-east1}"
 SERVICE="${SERVICE:-appointment-matchmaker}"
@@ -30,11 +39,13 @@ SERVICE="${SERVICE:-appointment-matchmaker}"
 REPO="${1:-$(git -C "$ROOT" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')}"
 [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Usage: $0 OWNER/REPO" >&2; exit 2; }
 
-POOL="github"
-PROVIDER="github-actions"
-DEPLOYER_NAME="${SERVICE:0:21}-deploy"   # service account IDs are at most 30 characters
+# One pool per environment: the grant below matches every token of a pool, so a
+# shared pool would let one environment's pipeline impersonate the other's deployer.
+POOL="${OIDC_POOL:-github}"
+PROVIDER="${OIDC_PROVIDER:-github-actions}"
+DEPLOYER_NAME="${DEPLOYER_SA_NAME:-${SERVICE:0:21}-deploy}"   # service account IDs are at most 30 characters
 DEPLOYER="$DEPLOYER_NAME@$PROJECT_ID.iam.gserviceaccount.com"
-RUNTIME_SA="${SERVICE:0:26}-run@$PROJECT_ID.iam.gserviceaccount.com"
+RUNTIME_SA="${RUNTIME_SA_NAME:-${SERVICE:0:26}-run}@$PROJECT_ID.iam.gserviceaccount.com"
 
 g() { gcloud --project="$PROJECT_ID" --quiet "$@"; }
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
@@ -52,6 +63,7 @@ step "Workload identity pool and provider (GitHub, $REPO, main branch only)"
 g iam workload-identity-pools describe "$POOL" --location=global >/dev/null 2>&1 \
   || g iam workload-identity-pools create "$POOL" --location=global --display-name="GitHub Actions"
 CONDITION="assertion.repository == '$REPO' && assertion.ref == 'refs/heads/main'"
+if [[ -n "${GITHUB_ENVIRONMENT:-}" ]]; then CONDITION+=" && assertion.environment == '$GITHUB_ENVIRONMENT'"; fi
 PROVIDER_ARGS=(--location=global --workload-identity-pool="$POOL"
   --issuer-uri="https://token.actions.githubusercontent.com"
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository"
@@ -76,7 +88,11 @@ g run services add-iam-policy-binding "$SERVICE" --region="$REGION" \
 g iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
   --member="$MEMBER" --role=roles/iam.serviceAccountUser >/dev/null
 
-step "Done. Add these as GitHub repository variables (Settings → Secrets and variables → Actions → Variables):"
+if [[ -n "${GITHUB_ENVIRONMENT:-}" ]]; then
+  step "Done. Add these as variables of the GitHub Environment '$GITHUB_ENVIRONMENT' (Settings → Environments → $GITHUB_ENVIRONMENT → Environment variables):"
+else
+  step "Done. Add these as GitHub repository variables (Settings → Secrets and variables → Actions → Variables):"
+fi
 cat <<OUT
   GCP_PROJECT_ID                 $PROJECT_ID
   GCP_REGION                     $REGION

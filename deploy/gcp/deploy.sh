@@ -2,7 +2,8 @@
 # Deploys the app to Google Cloud Run in an existing project. See README.md.
 # Safe to re-run: every step checks what already exists.
 #
-#   ./deploy.sh                    # build, push and deploy the current code
+#   ./deploy.sh                    # build, push and deploy the current code (dev: config.env)
+#   ./deploy.sh --env prod         # the same for another environment (config.prod.env)
 #   ./deploy.sh --update-secrets   # also replace the stored database URL / SMTP key
 #
 # Everything it creates is named after $SERVICE and labelled app=$SERVICE, and
@@ -12,15 +13,19 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 UPDATE_SECRETS=false
-case "${1:-}" in
-  "") ;;
-  --update-secrets) UPDATE_SECRETS=true ;;
-  *) echo "Usage: $0 [--update-secrets]" >&2; exit 2 ;;
-esac
+ENV_NAME=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --update-secrets) UPDATE_SECRETS=true; shift ;;
+    --env) ENV_NAME="${2:?--env needs a name, e.g. prod}"; shift 2 ;;
+    *) echo "Usage: $0 [--env NAME] [--update-secrets]" >&2; exit 2 ;;
+  esac
+done
 
-[[ -f "$HERE/config.env" ]] || { echo "Missing $HERE/config.env (copy config.env.example)." >&2; exit 1; }
+CONFIG="$HERE/config${ENV_NAME:+.$ENV_NAME}.env"
+[[ -f "$CONFIG" ]] || { echo "Missing $CONFIG (copy config.env.example)." >&2; exit 1; }
 # shellcheck source=/dev/null
-source "$HERE/config.env"
+source "$CONFIG"
 
 : "${PROJECT_ID:?Set PROJECT_ID in config.env}"
 SMTP_USERNAME="${SMTP_USERNAME:-}"
@@ -36,7 +41,7 @@ SMTP_PORT="${SMTP_PORT:-587}"
 SMTP_SECURITY="${SMTP_SECURITY:-starttls}"
 
 LABEL="app=$SERVICE"
-SA_NAME="${SERVICE:0:26}-run"   # service account IDs are at most 30 characters
+SA_NAME="${RUNTIME_SA_NAME:-${SERVICE:0:26}-run}"   # service account IDs are at most 30 characters
 SA="$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
 SECRET_DB="$SERVICE-database-url"
 SECRET_SMTP="$SERVICE-smtp-password"
@@ -78,7 +83,7 @@ ensure_secret() { # name, prompt, [value: used instead of asking]
     echo "Secret $name already exists (run with --update-secrets to replace it)."
   else
     if [[ -n "$value" ]]; then
-      echo "$prompt: taken from .env.local"
+      echo "$prompt: taken from $NEON_ENV_FILE"
     else
       read -r -s -p "$prompt: " value; echo
     fi
@@ -97,8 +102,9 @@ ensure_secret() { # name, prompt, [value: used instead of asking]
 # The direct (unpooled) Neon connection string written by `neon init` to
 # .env.local at the repo root; the app keeps its own connection pool.
 NEON_URL=""
-if [[ -f "$ROOT/.env.local" ]]; then
-  NEON_URL="$(sed -n 's/^DATABASE_URL_UNPOOLED=//p' "$ROOT/.env.local" | tail -1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+NEON_ENV_FILE="${NEON_ENV_FILE:-.env.local}"
+if [[ -f "$ROOT/$NEON_ENV_FILE" ]]; then
+  NEON_URL="$(sed -n 's/^DATABASE_URL_UNPOOLED=//p' "$ROOT/$NEON_ENV_FILE" | tail -1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
 fi
 
 step "Secrets"

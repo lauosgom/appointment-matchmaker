@@ -345,15 +345,19 @@ The frontend has 20 tests (Vitest). See [docs/testing.md](docs/testing.md).
 
 ## Deployment
 
-The app is deployed on Google Cloud Run, with a Neon PostgreSQL database:
+The app runs on Google Cloud Run, with a Neon PostgreSQL database, in two
+independent environments:
 
-**https://appointment-matchmaker-42649326635.us-east1.run.app/**
+- **Production:** **https://appointment-matchmaker-prod-42649326635.us-east1.run.app/**,
+  deployed by hand with the `Deploy to production` workflow, which needs an approval.
+- **Dev:** https://appointment-matchmaker-42649326635.us-east1.run.app/, deployed
+  automatically on every push to `main` once the tests pass.
 
-The first visit after a quiet period takes a few seconds while it wakes up.
-Production has no demo accounts. To deploy your own copy, run
-`./deploy/gcp/deploy.sh` (it builds the image, pushes it and deploys it). The full
-steps, the cost (free tier) and how to remove it are in
-[deploy/gcp/README.md](deploy/gcp/README.md).
+Each deploy is checked with `/api/health` before it takes traffic. The first visit
+after a quiet period takes a few seconds while it wakes up. Neither environment has
+demo accounts. To deploy your own copy, run `./deploy/gcp/deploy.sh` (it builds the
+image, pushes it and deploys it). The full steps, the pipeline, the cost (free tier)
+and how to remove it are in [deploy/gcp/README.md](deploy/gcp/README.md).
 
 ## Local development (without Docker)
 

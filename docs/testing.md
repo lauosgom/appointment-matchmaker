@@ -25,6 +25,7 @@ The e2e suite follows the sections of the test plan, and it has found real bugs
    PostgreSQL (`docker-compose.ci.yaml` publishes the database port), then runs
    the Playwright end-to-end suite. A failed run uploads the Playwright report
    and prints the stack logs.
-3. On pushes to `main`, once everything above passes, **Deploy to Cloud Run**
-   deploys the image and validates it with `/api/health` before it takes traffic
+3. On pushes to `main`, once everything above passes, **Deploy to dev** deploys
+   the image and validates it with `/api/health` before it takes traffic.
+   Production is deployed by hand with the `Deploy to production` workflow
    (see [deployment](deployment.md)).

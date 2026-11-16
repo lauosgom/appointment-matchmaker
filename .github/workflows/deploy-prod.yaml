@@ -1,0 +1,22 @@
+name: Deploy to production
+
+# Manual: run it from the Actions tab (Run workflow) once dev looks good.
+# The "production" GitHub Environment should require an approval, and the
+# production GCP deployer only trusts jobs that run in that environment.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-production:
+    name: Deploy to production
+    # Only main can reach production, whatever branch is chosen in the UI.
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yaml
+    with:
+      environment: production
+    permissions:
+      contents: read
+      id-token: write

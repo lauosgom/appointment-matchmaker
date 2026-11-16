@@ -1,17 +1,21 @@
 # Deployment
 
-The app runs on Google Cloud Run at
-https://appointment-matchmaker-42649326635.us-east1.run.app/ with a Neon
-PostgreSQL database. The steps are in [deploy/gcp/README.md](../deploy/gcp/README.md).
+The app runs on Google Cloud Run with a Neon PostgreSQL database, in two
+independent environments (separate service, image repository, service accounts,
+secrets, deployer and database):
 
-- `./deploy/gcp/deploy.sh` builds the Docker image, pushes it and deploys it.
-  Running it again redeploys new code.
-- Pushes to `main` deploy automatically after the tests pass, through a GitHub OIDC
-  role with minimal permissions and a check of `/api/health`
-  (see section 8 of the deploy README).
-- Secrets live in Secret Manager. `deploy/gcp/config.env` and `.env.local` are
+- **Production:** https://appointment-matchmaker-prod-42649326635.us-east1.run.app/
+- **Dev:** https://appointment-matchmaker-42649326635.us-east1.run.app/ The steps are in [deploy/gcp/README.md](../deploy/gcp/README.md).
+
+- `./deploy/gcp/deploy.sh` (dev) or `./deploy/gcp/deploy.sh --env prod` builds the
+  Docker image, pushes it and deploys it. Running it again redeploys new code.
+- Pushes to `main` deploy to **dev** automatically after the tests pass. Production
+  is deployed by running the `Deploy to production` workflow by hand, with an
+  approval. Both use a GitHub OIDC role of their own with minimal permissions, and
+  check `/api/health` before taking traffic (see section 8 of the deploy README).
+- Secrets live in Secret Manager. `deploy/gcp/config*.env` and `.env*local` are
   never committed.
-- Production has no demo data (`SEED_DEMO_DATA=false`). Create the first admin with
+- Neither environment has demo data (`SEED_DEMO_DATA=false`). Create the first admin with
   `make create-admin`.
 - Email is not set up yet. Password recovery shows the reset link on the page
   (`RESET_LINK_IN_RESPONSE`), which is insecure; see the deploy README for how to

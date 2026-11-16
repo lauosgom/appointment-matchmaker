@@ -152,38 +152,66 @@ Things that could cost money:
 Neon and Brevo don't charge on their free plans. They stop working when you hit
 their limits instead.
 
-## 8. Automatic deploys from GitHub Actions
+## 8. Two environments: dev and production
 
-The `deploy` job in [`.github/workflows/ci.yaml`](../../.github/workflows/ci.yaml)
-redeploys the app on every push to `main`, after all the tests pass. It logs in to
-Google Cloud with GitHub's OIDC token (workload identity federation), so no key or
-password is stored in GitHub.
+There are two independent copies of the infrastructure in the same Google Cloud
+project. Each has its own Cloud Run service, image repository, service accounts,
+secrets, GitHub deployer and Neon database:
 
-**Set up once**, after the first `./deploy/gcp/deploy.sh`, with a project admin
-logged in to `gcloud`:
+| | dev | production |
+|---|---|---|
+| Config | `config.env` | `config.prod.env` |
+| Cloud Run service | `appointment-matchmaker` | `appointment-matchmaker-prod` |
+| Neon project | `gentle-frost-94428278` (`.env.local`) | `round-cloud-21575563` (`.env.prod.local`) |
+| Deployed by | every push to `main`, after the tests pass | manual workflow, with approval |
+| GitHub Environment | `dev` | `production` |
+| Workload identity pool | `github` | `github-prod` |
+
+The scripts take `--env`: `./deploy/gcp/deploy.sh --env prod` and
+`./deploy/gcp/setup-github-oidc.sh --env prod`. Without it they use `config.env`
+(dev). The `config*.env` and `.env.*local` files are never committed.
+
+### GitHub Actions
+
+[`.github/workflows/ci.yaml`](../../.github/workflows/ci.yaml) runs the tests and,
+on `main`, deploys to **dev** through the reusable
+[`deploy.yaml`](../../.github/workflows/deploy.yaml).
+[`deploy-prod.yaml`](../../.github/workflows/deploy-prod.yaml) deploys to
+**production**: run it by hand from the Actions tab (Run workflow, branch `main`).
+Both log in to Google Cloud with GitHub's OIDC token (workload identity
+federation), so no key or password is stored in GitHub.
+
+**Set up once per environment**, after its first `./deploy/gcp/deploy.sh`, with a
+project admin logged in to `gcloud`:
 
 ```sh
-./deploy/gcp/setup-github-oidc.sh        # or: … OWNER/REPO
+./deploy/gcp/setup-github-oidc.sh             # dev
+./deploy/gcp/setup-github-oidc.sh --env prod  # production
 ```
 
-It prints five values. Add them in GitHub under **Settings → Secrets and variables →
-Actions → Variables**: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_SERVICE`,
-`GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOYER_SERVICE_ACCOUNT`. None of them is
-secret.
+Each prints five values: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_SERVICE`,
+`GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOYER_SERVICE_ACCOUNT`. None is secret.
+Add them as **variables of the GitHub Environment** (Settings → Environments). For
+`dev` the repository variables you already set keep working, because an
+environment variable only overrides a repository variable of the same name.
+For `production`, also add **Required reviewers** to the environment, so each
+production deploy needs an approval.
 
-**What the pipeline can do.** It acts as the service account
-`appointment-matchmaker-deploy`, which has only this:
+**What each pipeline can do.** It acts as its own deployer service account
+(`appointment-matchmaker-deploy` for dev, `am-prod-deploy` for production), which
+has only this, each on one resource of its own environment:
 
 | Permission | On | Why |
 |---|---|---|
-| `roles/artifactregistry.writer` | the app's image repository | push the image |
-| `roles/run.developer` | the app's Cloud Run service | roll out a new revision |
-| `roles/iam.serviceAccountUser` | the app's runtime service account | a revision runs as that account |
+| `roles/artifactregistry.writer` | the environment's image repository | push the image |
+| `roles/run.developer` | the environment's Cloud Run service | roll out a new revision |
+| `roles/iam.serviceAccountUser` | the environment's runtime service account | a revision runs as that account |
 
-Each is granted on one resource, not on the project. The account can't read
-secrets, change IAM policies, create or delete services, or touch anything else.
-Only `main` of this repository can use it: the trust policy checks the repository
-and the branch, so pull requests and forks can't deploy.
+Each environment has its own pool, because a grant matches every token of a pool.
+The accounts can't read secrets, change IAM policies, create or delete services,
+or touch the other environment. Only `main` of this repository can use them, and
+the production one also requires the job to run in the `production` GitHub
+Environment: pull requests, forks and the dev pipeline can't deploy to production.
 
 **How it deploys.** It builds and pushes the image, deploys it as a new revision
 with no traffic, and calls `/api/health` on that revision's own tagged URL. Only if

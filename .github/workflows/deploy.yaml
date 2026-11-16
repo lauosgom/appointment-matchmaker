@@ -1,0 +1,82 @@
+name: Deploy
+
+# Reusable: deploys the current checkout to one environment (dev or production).
+# Each GitHub Environment holds its own GCP_* variables, so the same steps deploy
+# to independent infrastructure. Called by ci.yaml (dev) and deploy-prod.yaml.
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment to deploy to (dev or production)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # lets the job ask GitHub for an OIDC token
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      SERVICE: ${{ vars.GCP_SERVICE }}
+      TAG: ci-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Google Cloud (OIDC, no stored keys)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push the image
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$SERVICE/app:$(git rev-parse --short=12 HEAD)"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build --platform linux/amd64 -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # Only the image changes: the service's settings, secrets and access stay as
+      # deploy.sh set them. --no-traffic keeps users on the current revision until
+      # the new one has passed the health check on its own tagged URL.
+      - name: Deploy the new revision without traffic
+        run: |
+          gcloud run deploy "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
+            --image="$IMAGE" --no-traffic --tag="$TAG" --quiet
+          URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
+            --format=json | python3 -c "import json,sys; print(next(t['url'] for t in json.load(sys.stdin)['status']['traffic'] if t.get('tag')=='$TAG'))")"
+          echo "CANDIDATE_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Health check the new revision
+        run: ./deploy/gcp/check-health.sh "$CANDIDATE_URL" 30
+
+      - name: Send traffic to the new revision
+        run: |
+          gcloud run services update-traffic "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
+            --to-latest --quiet
+
+      - name: Validate the live service
+        run: |
+          URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')"
+          ./deploy/gcp/check-health.sh "$URL" 30
+
+      - name: Remove the temporary revision tag
+        if: always()
+        run: |
+          gcloud run services update-traffic "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
+            --remove-tags="$TAG" --quiet || true
