@@ -408,8 +408,18 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 APP_ENV=local make run
 ```
 
 Traces and metrics are produced so far; the logs pipeline is ready for later.
-The dev and production services export nothing until `OTEL_EXPORTER_OTLP_ENDPOINT`
-is set in `deploy/gcp/config*.env`.
+
+![The Appointment Matchmaker dashboard in Grafana Cloud: slots by state, holds by outcome and p95 latency per route](docs/images/grafana-dashboard.png)
+
+**In the deployed environments** (dev and production) the services send their
+telemetry straight to [Grafana Cloud](https://grafana.com/products/cloud/) (free
+plan), with no Collector in between. `deploy.sh` stores the OTLP auth header in
+Secret Manager and passes it to the service when `OTEL_EXPORTER_OTLP_ENDPOINT` is
+set in `deploy/gcp/config*.env`. The two environments appear as separate services
+(`job` = the Cloud Run service name). Import
+[`observability/grafana/dashboards/appointment-matchmaker.json`](observability/grafana/dashboards/appointment-matchmaker.json)
+into Grafana Cloud for the dashboard above, filterable by environment and version.
+Setup steps: [observability/README.md](observability/README.md#grafana-cloud-dev-and-production).
 
 ## Local development (without Docker)
 

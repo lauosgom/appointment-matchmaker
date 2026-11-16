@@ -73,10 +73,10 @@ with monthly usage limits (check the current limits on its pricing page).
 4. In Grafana Cloud, import `grafana/dashboards/appointment-matchmaker.json`
    (Dashboards → New → Import) and pick its Prometheus data source.
 
-Check after the first traffic: Grafana Cloud only turns some resource attributes
-into metric labels by default (`service.name` becomes `job`; `service.version` is
-normally on the list; `deployment.environment.name` may not be). The others stay
-in the `target_info` series. If the dashboard's **Environment** filter is empty, add
-`deployment.environment.name` to the promoted resource attributes in your stack's
-OTLP settings, or filter by `job` instead: dev and production already have different
-service names. The dashboard has not been tried against Grafana Cloud yet.
+Verified against dev and production: the metrics arrive with
+`service_name` (as `job`), `service_version` and `deployment_environment_name` as
+labels, so the dashboard's filters work as is. (The `target_info` series lists the
+environment under the older name `deployment_environment`; the metrics themselves
+use `deployment_environment_name`.) Externally shared Grafana dashboards do not
+support template variables, so this dashboard (which has them) may not be
+shareable publicly as it is.
