@@ -147,7 +147,7 @@ jobs:
           IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_SERVICE }}/app:${{ steps.tag.outputs.image_tag }}
         run: |
           gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
-          docker build --platform linux/amd64 -t "$IMAGE" .
+          docker build --platform linux/amd64 --build-arg APP_VERSION="${{ steps.tag.outputs.image_tag }}" -t "$IMAGE" .
           docker push "$IMAGE"
 
   deploy-dev:

@@ -115,7 +115,7 @@ if [[ "$EMAIL" == true ]]; then ensure_secret "$SECRET_SMTP" "Brevo SMTP key"; f
 
 step "Building and pushing $IMAGE"
 gcloud auth configure-docker "$REGISTRY" --quiet >/dev/null
-docker build --platform linux/amd64 -t "$IMAGE" "$ROOT"
+docker build --platform linux/amd64 --build-arg APP_VERSION="$(date -u +%Y%m%d-%H%M%S)-$(git -C "$ROOT" rev-parse --short=7 HEAD)" -t "$IMAGE" "$ROOT"
 docker push "$IMAGE"
 
 if [[ -z "${APP_BASE_URL:-}" ]]; then
@@ -123,7 +123,9 @@ if [[ -z "${APP_BASE_URL:-}" ]]; then
   APP_BASE_URL="https://$SERVICE-$(g projects describe "$PROJECT_ID" --format='value(projectNumber)').$REGION.run.app"
 fi
 
-ENV_VARS=("SEED_DEMO_DATA=false" "APP_BASE_URL=$APP_BASE_URL")
+# Same names as the GitHub Environments the CI deploys use (dev, production).
+ENV_VARS=("SEED_DEMO_DATA=false" "APP_BASE_URL=$APP_BASE_URL" "APP_ENV=$([[ "$ENV_NAME" == prod ]] && echo production || echo "${ENV_NAME:-dev}")")
+if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then ENV_VARS+=("OTEL_EXPORTER_OTLP_ENDPOINT=$OTEL_EXPORTER_OTLP_ENDPOINT"); fi
 SECRETS_ARG="DATABASE_URL=$SECRET_DB:latest"
 if [[ "$EMAIL" == true ]]; then
   ENV_VARS+=("MAIL_SEND_INLINE=true" "SMTP_HOST=$SMTP_HOST" "SMTP_PORT=$SMTP_PORT"

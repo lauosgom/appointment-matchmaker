@@ -43,6 +43,7 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       SERVICE: ${{ vars.GCP_SERVICE }}
+      APP_ENV: ${{ inputs.environment }}
       REVISION_TAG: ci-${{ github.run_id }}
       IMAGE_TAG: ${{ inputs.image_tag }}
       SOURCE_SERVICE: ${{ vars.GCP_SOURCE_SERVICE }}
@@ -100,7 +101,7 @@ jobs:
       - name: Deploy the new revision without traffic
         run: |
           gcloud run deploy "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
-            --image="$IMAGE" --no-traffic --tag="$REVISION_TAG" --quiet
+            --image="$IMAGE" --update-env-vars="APP_ENV=$APP_ENV" --no-traffic --tag="$REVISION_TAG" --quiet
           URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" --region="$REGION" \
             --format=json | python3 -c "import json,sys; print(next(t['url'] for t in json.load(sys.stdin)['status']['traffic'] if t.get('tag')=='$REVISION_TAG'))")"
           echo "CANDIDATE_URL=$URL" >> "$GITHUB_ENV"

@@ -37,7 +37,10 @@ COPY --from=frontend /frontend/dist/client ./static
 RUN useradd --create-home --uid 1000 app && mkdir /data && chown app:app /data
 USER app
 
-ENV FRONTEND_DIR=/app/static \
+# The image tag (YYYYMMDD-HHMMSS-shortsha), reported in telemetry as service.version.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION \
+    FRONTEND_DIR=/app/static \
     DATABASE_URL=sqlite:////data/appointments.db
 VOLUME ["/data"]
 EXPOSE 8000

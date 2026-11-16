@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import config, db, seed
+from . import config, db, seed, telemetry
 from .routers import (
     assignments,
     auth,
@@ -31,6 +31,7 @@ def init_database() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_database()
+    telemetry.setup(_app)
     yield
 
 

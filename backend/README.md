@@ -27,6 +27,20 @@ Configured with environment variables:
 | `MAIL_FROM` | `Citas con especialistas <no-reply@localhost>` | sender address |
 | `MAIL_SEND_INLINE` | `false` | send emails before answering instead of in the background (needed on Cloud Run); reset requests then take at least 2 s, whether or not the email exists |
 
+## Telemetry (OpenTelemetry)
+
+HTTP requests are traced (SQL queries are not: the SQLAlchemy instrumentation does not yet support SQLAlchemy 2.1) and exported over OTLP/HTTP when
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set; without it nothing is exported
+(`OTEL_SDK_DISABLED=true` forces it off). Every span's resource carries:
+
+| attribute | source | default |
+|---|---|---|
+| `service.name` | `OTEL_SERVICE_NAME`, else Cloud Run's `K_SERVICE` | `appointment-matchmaker` |
+| `deployment.environment.name` | `APP_ENV` (set by the deploy: `dev`, `production`) | `local` |
+| `service.version` | `APP_VERSION` (the image tag, baked in at build time; promotion to production keeps it) | `dev` |
+
+`/api/health` is not traced. Standard `OTEL_*` variables (headers, sampler…) also work.
+
 To read emails locally, run a mail catcher such as Mailpit
 (`docker run -p 8025:8025 -p 1025:1025 axllent/mailpit:v1.27`) and start the API
 with `SMTP_HOST=localhost SMTP_PORT=1025 SMTP_SECURITY=none`.
