@@ -144,13 +144,8 @@ g run deploy "$SERVICE" \
   --set-env-vars="$ENV_ARG" \
   --set-secrets="$SECRETS_ARG"
 
-step "Checking the app answers"
-for _ in $(seq 1 30); do
-  code="$(curl -s -o /dev/null -w '%{http_code}' "$APP_BASE_URL/api/settings" || true)"
-  [[ "$code" == "401" ]] && break   # 401 = up (settings need a login)
-  sleep 2
-done
-[[ "$code" == "401" ]] || echo "Warning: $APP_BASE_URL/api/settings answered '$code' (expected 401). Check the logs." >&2
+step "Checking the app is healthy"
+"$HERE/check-health.sh" "$APP_BASE_URL" 30 || echo "Warning: the health check failed. Check the logs." >&2
 
 step "Done"
 echo "App:  $APP_BASE_URL"

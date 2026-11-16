@@ -6,6 +6,9 @@ PostgreSQL database. The steps are in [deploy/gcp/README.md](../deploy/gcp/READM
 
 - `./deploy/gcp/deploy.sh` builds the Docker image, pushes it and deploys it.
   Running it again redeploys new code.
+- Pushes to `main` deploy automatically after the tests pass, through a GitHub OIDC
+  role with minimal permissions and a check of `/api/health`
+  (see section 8 of the deploy README).
 - Secrets live in Secret Manager. `deploy/gcp/config.env` and `.env.local` are
   never committed.
 - Production has no demo data (`SEED_DEMO_DATA=false`). Create the first admin with

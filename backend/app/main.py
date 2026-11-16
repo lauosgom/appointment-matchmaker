@@ -12,6 +12,7 @@ from .routers import (
     availability,
     categories,
     corrections,
+    health,
     settings,
     slots,
     specialists,
@@ -60,6 +61,7 @@ for router in (
     availability.router,
     assignments.router,
     corrections.router,
+    health.router,
 ):
     app.include_router(router, prefix="/api")
 

@@ -30,8 +30,38 @@ tags:
   - name: availability
   - name: assignments
   - name: corrections
+  - name: health
 
 paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Check that the app is up and can reach its database
+      description: Public. Used by the deployment pipeline to validate a deploy.
+      security: []
+      responses:
+        "200":
+          description: The app and its database are up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+        "503":
+          description: The database can't be reached
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [unavailable]
   /auth/login:
     post:
       tags: [auth]

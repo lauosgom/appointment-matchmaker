@@ -152,6 +152,46 @@ Things that could cost money:
 Neon and Brevo don't charge on their free plans. They stop working when you hit
 their limits instead.
 
+## 8. Automatic deploys from GitHub Actions
+
+The `deploy` job in [`.github/workflows/ci.yaml`](../../.github/workflows/ci.yaml)
+redeploys the app on every push to `main`, after all the tests pass. It logs in to
+Google Cloud with GitHub's OIDC token (workload identity federation), so no key or
+password is stored in GitHub.
+
+**Set up once**, after the first `./deploy/gcp/deploy.sh`, with a project admin
+logged in to `gcloud`:
+
+```sh
+./deploy/gcp/setup-github-oidc.sh        # or: … OWNER/REPO
+```
+
+It prints five values. Add them in GitHub under **Settings → Secrets and variables →
+Actions → Variables**: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_SERVICE`,
+`GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOYER_SERVICE_ACCOUNT`. None of them is
+secret.
+
+**What the pipeline can do.** It acts as the service account
+`appointment-matchmaker-deploy`, which has only this:
+
+| Permission | On | Why |
+|---|---|---|
+| `roles/artifactregistry.writer` | the app's image repository | push the image |
+| `roles/run.developer` | the app's Cloud Run service | roll out a new revision |
+| `roles/iam.serviceAccountUser` | the app's runtime service account | a revision runs as that account |
+
+Each is granted on one resource, not on the project. The account can't read
+secrets, change IAM policies, create or delete services, or touch anything else.
+Only `main` of this repository can use it: the trust policy checks the repository
+and the branch, so pull requests and forks can't deploy.
+
+**How it deploys.** It builds and pushes the image, deploys it as a new revision
+with no traffic, and calls `/api/health` on that revision's own tagged URL. Only if
+that answers `200 {"status":"ok"}` (the app is up and reaches its database) does it
+send traffic to the revision, and then it checks `/api/health` on the live URL
+again. If the check fails, the job fails and users stay on the previous revision.
+Settings and secrets are not touched: change those with `./deploy/gcp/deploy.sh`.
+
 ## Troubleshooting
 
 - **Error mentioning `allUsers` or `iam.allowedPolicyMemberDomains` while
