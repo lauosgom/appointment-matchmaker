@@ -32,7 +32,10 @@ services:
       - "${MAIL_UI_PORT:-8025}:8025"
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_SHOW_DEMO_ACCOUNTS: "true"
     image: appointment-matchmaker
     restart: unless-stopped
     depends_on:

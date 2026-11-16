@@ -10,8 +10,11 @@ RUN npm ci
 COPY frontend/ ./
 # STATIC_BUILD: client-only SPA build (dist/client/index.html + assets), no SSR server.
 # VITE_API_URL: same-origin API, since the backend serves the frontend.
+# VITE_SHOW_DEMO_ACCOUNTS: list the demo logins on the login page (off for production).
+ARG VITE_SHOW_DEMO_ACCOUNTS=false
 ENV STATIC_BUILD=true \
-    VITE_API_URL=/api
+    VITE_API_URL=/api \
+    VITE_SHOW_DEMO_ACCOUNTS=$VITE_SHOW_DEMO_ACCOUNTS
 RUN npm run build
 
 # ---- Stage 2: Python backend that also serves the frontend ---------------------

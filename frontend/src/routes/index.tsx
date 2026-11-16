@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/queries";
+import { usingMock } from "@/services";
+
+// Demo logins exist only where demo data is seeded: dev, the mock and Compose.
+const showDemoAccounts =
+  usingMock || import.meta.env.DEV || import.meta.env["VITE_SHOW_DEMO_ACCOUNTS"] === "true";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -84,10 +89,12 @@ function Login() {
           ¿Olvidaste tu contraseña?
         </Link>
       </form>
-      <div className="mt-6 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Cuentas de demostración</p>
-        <p>admin / admin123 · orientador / orientador123 · especialista / especialista123</p>
-      </div>
+      {showDemoAccounts && (
+        <div className="mt-6 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">Cuentas de demostración</p>
+          <p>admin / admin123 · orientador / orientador123 · especialista / especialista123</p>
+        </div>
+      )}
     </AuthCard>
   );
 }
