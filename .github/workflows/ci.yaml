@@ -63,7 +63,15 @@ jobs:
       - name: Start the stack and check it answers
         run: |
           docker compose $COMPOSE_FILES up -d --wait
-          curl --fail --retry 10 --retry-delay 3 --retry-connrefused http://localhost:8000/
+          # The app has no healthcheck, so --wait returns before it answers: poll.
+          # 401 means the API is up (settings need a login).
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/settings || true)
+            if [ "$code" = 200 ] || [ "$code" = 401 ]; then echo "App is up (HTTP $code)"; exit 0; fi
+            echo "Waiting for the app ($i/60, got '$code')"; sleep 2
+          done
+          docker compose $COMPOSE_FILES logs app
+          exit 1
 
       - name: Integration tests against the stack's PostgreSQL
         run: |
