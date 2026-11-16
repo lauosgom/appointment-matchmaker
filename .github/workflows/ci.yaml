@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: make install-backend
+      - run: make test-backend
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci
+      - run: make test-frontend
+
+  stack-tests:
+    name: Compose stack (integration + e2e)
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    timeout-minutes: 30
+    env:
+      COMPOSE_FILES: -f docker-compose.yaml -f docker-compose.ci.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Build the Docker Compose stack
+        run: docker compose $COMPOSE_FILES build
+
+      - name: Start the stack and check it answers
+        run: |
+          docker compose $COMPOSE_FILES up -d --wait
+          curl --fail --retry 10 --retry-delay 3 --retry-connrefused http://localhost:8000/
+
+      - name: Integration tests against the stack's PostgreSQL
+        run: |
+          docker compose $COMPOSE_FILES exec -T db createdb -U appointment appointment_test
+          cd backend && uv sync --locked
+          TEST_DATABASE_URL=postgresql://appointment:appointment@localhost:5432/appointment_test uv run pytest
+
+      - name: Stop the stack before the e2e run
+        run: docker compose $COMPOSE_FILES down -v
+
+      # The e2e suite starts and removes its own Compose project on port 18000,
+      # reusing the image built above.
+      - name: End-to-end tests (Playwright)
+        env:
+          E2E_NO_BUILD: "1"
+        run: |
+          cd e2e
+          npm ci
+          npx playwright install --with-deps chromium
+          npm test
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+
+      - name: Show the stack logs
+        if: failure()
+        run: docker compose $COMPOSE_FILES logs --no-color || true
+
+      - name: Clean up
+        if: always()
+        run: docker compose $COMPOSE_FILES down -v --remove-orphans || true

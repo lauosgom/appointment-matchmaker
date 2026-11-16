@@ -13,3 +13,15 @@ needs Docker and starts its own stack, so it's a separate command.
 
 The e2e suite follows the sections of the test plan, and it has found real bugs
 (booking races, among others), which were fixed and covered by backend tests.
+
+## Continuous integration
+
+[`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) runs on every push to
+`main` and on pull requests:
+
+1. **Backend tests** and **frontend tests** run in parallel.
+2. When both pass, **Compose stack** builds the Docker Compose stack, starts it
+   and checks it answers, runs the backend integration suite against the stack's
+   PostgreSQL (`docker-compose.ci.yaml` publishes the database port), then runs
+   the Playwright end-to-end suite. A failed run uploads the Playwright report
+   and prints the stack logs.
